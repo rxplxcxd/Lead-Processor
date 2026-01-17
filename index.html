@@ -5,6 +5,11 @@ Single-file app: index.html
 - Tool extrahiert Firmenkontakte (konservativ), filtert Müll, dedupliziert
 - Export: leads1.csv, leads2.csv, ...
 - Läuft lokal in Safari (iPhone) oder jedem Desktop-Browser (Windows)
+
+Fixes:
+- Tabellarische Preview
+- Excel-safe ZIP Export (führende 0 bleibt)
+- Bessere Company-Name-Erkennung (Google Maps/Apple Maps etc. werden ignoriert)
 -->
 <!doctype html>
 <html lang="de">
@@ -17,20 +22,63 @@ Single-file app: index.html
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 16px; }
     h1 { font-size: 18px; margin: 0 0 10px; }
     .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
-    textarea { width: 100%; min-height: 320px; resize: vertical; padding: 10px; border-radius: 10px; border: 1px solid #8886; }
-    input[type="number"] { width: 120px; padding: 8px; border-radius: 10px; border: 1px solid #8886; }
-    button { padding: 10px 12px; border-radius: 10px; border: 1px solid #8886; cursor: pointer; }
+    .panel { border: 1px solid #8886; border-radius: 12px; padding: 10px; background: color-mix(in srgb, Canvas 92%, transparent); }
+    textarea { width: 100%; min-height: 320px; resize: vertical; padding: 12px; border-radius: 12px; border: 1px solid #8886; background: color-mix(in srgb, Canvas 92%, transparent); }
+    input[type="number"], select {
+      padding: 8px; border-radius: 10px; border: 1px solid #8886;
+      background: color-mix(in srgb, Canvas 92%, transparent);
+    }
+    button { padding: 10px 12px; border-radius: 10px; border: 1px solid #8886; cursor: pointer; background: color-mix(in srgb, Canvas 92%, transparent); }
     button:active { transform: translateY(1px); }
+    button[disabled] { opacity: 0.5; cursor: not-allowed; }
     .small { font-size: 12px; opacity: 0.85; }
-    .panel { border: 1px solid #8886; border-radius: 12px; padding: 10px; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; margin-top: 10px; }
-    .stat { padding: 8px 10px; border-radius: 10px; border: 1px solid #8886; }
-    pre { white-space: pre-wrap; word-break: break-word; }
+    .stat { padding: 10px; border-radius: 12px; border: 1px solid #8886; background: color-mix(in srgb, Canvas 92%, transparent); }
     .warn { color: #c00; }
     .ok { color: #0a7; }
-    .errBox { display:none; margin-top:10px; border:1px solid #c006; border-radius:12px; padding:10px; }
+    .errBox { display:none; margin-top:10px; border:1px solid #c006; border-radius:12px; padding:10px; background: color-mix(in srgb, Canvas 92%, transparent); }
     .errBox b { color:#c00; }
+
+    /* Table preview */
+    .tableWrap {
+      border: 1px solid #8886;
+      border-radius: 12px;
+      overflow: hidden;
+      background: color-mix(in srgb, Canvas 92%, transparent);
+    }
+    .tableScroll {
+      max-height: 320px;
+      overflow: auto;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    thead th {
+      position: sticky; top: 0;
+      background: color-mix(in srgb, Canvas 96%, transparent);
+      border-bottom: 1px solid #8886;
+      padding: 10px 8px;
+      text-align: left;
+      white-space: nowrap;
+      z-index: 2;
+    }
+    tbody td {
+      border-bottom: 1px solid #8883;
+      padding: 8px;
+      vertical-align: top;
+      white-space: nowrap;
+      max-width: 260px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    tbody tr:hover td { background: color-mix(in srgb, Canvas 88%, transparent); }
+
+    .pill {
+      display:inline-block; padding: 2px 8px; border: 1px solid #8886; border-radius: 999px;
+      font-size: 12px; opacity: 0.9;
+      background: color-mix(in srgb, Canvas 94%, transparent);
+    }
+
+    .right { margin-left: auto; }
   </style>
 </head>
 <body>
@@ -47,25 +95,42 @@ Single-file app: index.html
 
   <div class="row">
     <label class="small">Max. Zeilen pro CSV:
-      <input id="maxRows" type="number" min="1" step="1" value="500" />
+      <input id="maxRows" type="number" min="1" step="1" value="5000" />
     </label>
+
+    <label class="small">PLZ Export:
+      <select id="zipMode">
+        <option value="excel_text" selected>Excel-safe (01097 bleibt 01097)</option>
+        <option value="plain">Plain (Excel kann führende 0 verlieren)</option>
+      </select>
+    </label>
+
     <button id="analyzeBtn">Analysieren</button>
     <button id="exportBtn" disabled>CSV exportieren</button>
-    <button id="clearBtn">Leeren</button>
+    <button id="copyBtn" disabled>CSV kopieren</button>
+    <button id="clearBtn" class="right">Leeren</button>
   </div>
 
   <div id="errBox" class="errBox">
     <div class="small"><b>Fehler:</b> <span id="errMsg" class="mono"></span></div>
-    <div class="small">Tipp: Wenn du auf iPhone testest, siehst du Errors sonst oft nicht. Dieses Feld zeigt sie dir.</div>
+    <div class="small">Tipp: Auf iPhone sieht man JS-Errors sonst oft nicht – hier schon.</div>
   </div>
 
   <div class="stats" id="stats"></div>
 
   <div class="row">
     <div class="panel" style="width:100%">
-      <div class="small"><b>Vorschau (erste 20 Zeilen CSV):</b></div>
-      <pre id="preview" class="mono small"></pre>
-      <div id="hint" class="small"></div>
+      <div class="small"><b>Preview:</b> <span id="hint" class="small"></span></div>
+      <div class="tableWrap" style="margin-top:8px;">
+        <div class="tableScroll">
+          <table id="previewTable" aria-label="CSV Preview Table">
+            <thead>
+              <tr id="theadRow"></tr>
+            </thead>
+            <tbody id="tbodyRows"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -76,24 +141,41 @@ Single-file app: index.html
     const SOURCE_CONST = "manual_copy";
     const DEFAULT_NOTES_LIMIT = 120;
 
+    const HEADER = ["company_name","street","zip","city","phone","email","website","source","notes"];
+
     // Social domains should NOT become website
     const SOCIAL_HOST_BLACKLIST = [
       "facebook.com", "fb.com", "instagram.com", "linkedin.com", "tiktok.com",
       "youtube.com", "youtu.be", "xing.com", "twitter.com", "x.com", "pinterest.com"
     ];
 
-    // Strong noise patterns (common cookie/footer/navigation stuff)
+    // Headings / source markers that should never become company names
+    const COMPANY_HEADING_BLACKLIST = [
+      /^google\s*maps$/i,
+      /^apple\s*maps$/i,
+      /^maps$/i,
+      /^route$/i,
+      /^speichern$/i,
+      /^teilen$/i,
+      /^in\s+der\s+nähe$/i,
+      /^bewertungen?:/i,
+      /^öffnungszeiten?:/i,
+      /^kontakt$/i,
+      /^impressum$/i,
+      /^datenschutz$/i,
+      /^privacy$/i,
+      /^agb$/i
+    ];
+
+    // Strong noise patterns
     const NOISE_PATTERNS = [
       /cookie(s)?/i,
       /consent/i,
       /datenschutz/i,
       /privacy/i,
-      /impressum\s*$/i,
-      /\b(agb|terms)\b/i,
       /\b(alle\s*rechte\s*vorbehalten|copyright|©)\b/i,
       /\b(navigation|menu|menü)\b/i,
       /\b(home|startseite|kontakt|leistungen|über uns|karriere|jobs|blog|news|shop|warenkorb)\b/i,
-      /\b(öffnungszeiten)\b/i,
       /\b(standort(e)?|route|anfahrt)\b/i,
       /\b(google\s*analytics|matomo|tracking)\b/i,
       /\b(javascript|css|html)\b/i,
@@ -103,9 +185,12 @@ Single-file app: index.html
       /urheber/i,
       /verantwortlich/i,
       /redaktionell/i,
+      /speichern/i,
+      /in der nähe/i,
+      /bewertungen/i,
     ];
 
-    // Terms that often indicate an imprint/legal block (useful note)
+    // Imprint hints
     const IMPRINT_HINTS = [
       /\bust-?id\b/i,
       /\bustid\b/i,
@@ -119,7 +204,6 @@ Single-file app: index.html
       /\binhaber\b/i,
     ];
 
-    // Segment separators, can hint new company blocks
     const HARD_SEPARATORS = [
       /^---+$/m,
       /^===+$/m,
@@ -147,17 +231,21 @@ Single-file app: index.html
     function isProbablyNoiseLine(line) {
       const l = (line || "").trim();
       if (!l) return true;
-
-      if (l.length <= 3) return true;
+      if (l.length <= 2) return true;
       if (/^[\-\–\—\•\|\/\\\s]+$/.test(l)) return true;
 
-      if (l.length <= 30) {
-        const navish = /\b(home|kontakt|impressum|datenschutz|agb|leistungen|news|blog)\b/i;
+      // Explicit headings are noise lines too
+      if (COMPANY_HEADING_BLACKLIST.some(re => re.test(l))) return true;
+
+      // Short nav-like lines
+      if (l.length <= 35) {
+        const navish = /\b(home|kontakt|impressum|datenschutz|agb|leistungen|news|blog|speichern|teilen|route)\b/i;
         if (navish.test(l) && !/@/.test(l) && !/\d{5}/.test(l) && !/(tel|telefon|\+49)/i.test(l)) return true;
       }
 
+      // Cookie/privacy/legal boilerplate
       for (const re of NOISE_PATTERNS) {
-        if (re.test(l) && l.length < 120) return true;
+        if (re.test(l) && l.length < 140) return true;
       }
 
       if (/(akzeptieren|zustimmen|ablehnen|einstellungen)/i.test(l) && /cookie/i.test(l)) return true;
@@ -221,6 +309,7 @@ Single-file app: index.html
       const re2 = /\bwww\.[^\s<>"')]+\b/gi;
       (t.match(re2) || []).forEach(u => urls.add(u));
 
+      // bare domains
       const re3 = /\b(?![A-Z0-9._%+-]+@)([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/gi;
       (t.match(re3) || []).forEach(d => {
         if (/\.(png|jpg|jpeg|gif|svg|pdf|css|js)$/i.test(d)) return;
@@ -232,6 +321,7 @@ Single-file app: index.html
     }
 
     function findZipCity(text) {
+      // Accept "Heinrichstraße 12, 01097 Dresden" and plain "01097 Dresden"
       const re = /\b(\d{5})\s+([A-Za-zÀ-ÖØ-öø-ÿÄÖÜäöüß\.\- ]{2,})\b/g;
       const candidates = [];
       let m;
@@ -239,7 +329,7 @@ Single-file app: index.html
         const zip = m[1];
         let city = (m[2] || "").trim();
         city = city.split("\n")[0].trim();
-        city = city.replace(/\b(Tel|Telefon|Phone|E-Mail|Email|Web|Website)\b.*$/i, "").trim();
+        city = city.replace(/\b(Tel|Telefon|Phone|E-Mail|Email|Web|Website|Bewertungen|Route)\b.*$/i, "").trim();
         if (city.length < 2) continue;
         if (/\d/.test(city)) continue;
         candidates.push({ zip, city });
@@ -255,21 +345,18 @@ Single-file app: index.html
 
       for (const line of lines) {
         const l = line.trim();
-        if (l.length < 6 || l.length > 90) continue;
+        if (l.length < 6 || l.length > 110) continue;
+
+        // handle "Street 12, 01097 Dresden" => return "Street 12"
+        if (/,/.test(l) && streetRe.test(l) && houseNoRe.test(l)) {
+          const first = l.split(",")[0].trim();
+          if (first.length >= 6) return first.replace(/^\s*(adresse|anschrift)\s*[:\-]\s*/i, "").trim();
+        }
+
         if (!streetRe.test(l)) continue;
         if (!houseNoRe.test(l)) continue;
         if (/(register|ust|gericht|hrb|hra|steuer)/i.test(l)) continue;
         return l.replace(/^\s*(adresse|anschrift)\s*[:\-]\s*/i, "").trim();
-      }
-
-      for (const line of lines) {
-        const l = line.trim();
-        if (l.length < 6 || l.length > 120) continue;
-        if (houseNoRe.test(l) && /,/.test(l) && !/@/.test(l)) {
-          const parts = l.split(",");
-          const first = parts[0].trim();
-          if (first.length >= 6 && first.length <= 90) return first;
-        }
       }
 
       return "";
@@ -281,9 +368,7 @@ Single-file app: index.html
 
       const reLabel = /(?:tel\.?|telefon|phone|mobil|fax)\s*[:\-]?\s*([+\d][\d \-\/]{6,})/gi;
       let m;
-      while ((m = reLabel.exec(t)) !== null) {
-        candidates.add(normalizePhone(m[1]));
-      }
+      while ((m = reLabel.exec(t)) !== null) candidates.add(normalizePhone(m[1]));
 
       const reGeneral = /\b(?:\+49|0)\s*[\d][\d \-\/]{6,}\b/g;
       (t.match(reGeneral) || []).forEach(p => candidates.add(normalizePhone(p)));
@@ -319,7 +404,8 @@ Single-file app: index.html
     function looksLikeCompanyName(line) {
       const l = (line || "").trim();
       if (!l) return false;
-      if (l.length < 2 || l.length > 90) return false;
+      if (l.length < 2 || l.length > 110) return false;
+      if (COMPANY_HEADING_BLACKLIST.some(re => re.test(l))) return false;
       if (isAddressLike(l)) return false;
       if (isContactLike(l)) return false;
       if (isProbablyNoiseLine(l)) return false;
@@ -331,27 +417,23 @@ Single-file app: index.html
     // --- Segmentierung ---
     function splitIntoBlocks(rawText) {
       const text = normalizeSpaces(rawText);
-
       let t = text;
       HARD_SEPARATORS.forEach(re => { t = t.replace(re, "\n\n---\n\n"); });
-
       const roughBlocks = t.split(/\n{2,}/).map(b => b.trim()).filter(Boolean);
 
       const blocks = [];
       for (const b of roughBlocks) {
         if (b.length > 4000) {
           const parts = b.split(/\n(?=(Kontakt|Impressum|Anschrift|Adresse)\b[: ]?)/i)
-                         .map(p => p.trim()).filter(Boolean);
+            .map(p => p.trim()).filter(Boolean);
           if (parts.length > 1) blocks.push(...parts);
           else blocks.push(b);
-        } else {
-          blocks.push(b);
-        }
+        } else blocks.push(b);
       }
       return blocks;
     }
 
-    // --- Extraktion pro Block ---
+    // --- Extraction per block ---
     function extractFromBlock(blockText) {
       const lines = (blockText || "")
         .split("\n")
@@ -366,7 +448,6 @@ Single-file app: index.html
         if (isProbablyNoiseLine(line)) continue;
         keptLines.push(line);
       }
-
       if (keptLines.length === 0) return null;
 
       const keptText = keptLines.join("\n");
@@ -399,16 +480,19 @@ Single-file app: index.html
       const { zip, city } = findZipCity(keptText);
       const street = findStreet(keptText);
 
+      // company_name: first good candidate
       let company_name = "";
       for (const line of keptLines) {
         if (looksLikeCompanyName(line)) { company_name = line; break; }
       }
 
+      // fallback: try next best line if first ones are headings
       if (!company_name) {
         const maybe = keptLines.find(l =>
-          l.length <= 90 &&
+          l.length <= 110 &&
           !isAddressLike(l) &&
           !isContactLike(l) &&
+          !COMPANY_HEADING_BLACKLIST.some(re => re.test(l)) &&
           !/^(kontakt|impressum|datenschutz)$/i.test(l)
         );
         if (maybe && looksLikeCompanyName(maybe)) company_name = maybe;
@@ -439,9 +523,9 @@ Single-file app: index.html
       };
     }
 
-    // --- Merge & Dedupe ---
-    // IMPORTANT: keep iPhone/Safari compatibility (no Unicode property escapes)
+    // --- Dedupe ---
     function normalizeKeyPart(s) {
+      // keep iPhone/Safari compatibility
       return toLowerSafe((s || ""))
         .replace(/[^a-z0-9äöüß]+/gi, " ")
         .replace(/\s+/g, " ")
@@ -463,11 +547,10 @@ Single-file app: index.html
 
     function mergeRecords(base, incoming) {
       const out = { ...base };
-
-      for (const k of ["company_name","street","zip","city","phone","email","website","source"]) {
+      for (const k of HEADER) {
+        if (k === "notes") continue;
         if (!out[k] && incoming[k]) out[k] = incoming[k];
       }
-
       const notes = new Set();
       [base.notes, incoming.notes].forEach(n => {
         (n || "").split(",").map(x => x.trim()).filter(Boolean).forEach(x => notes.add(x));
@@ -480,7 +563,6 @@ Single-file app: index.html
     function dedupe(records) {
       const map = new Map();
       const kept = [];
-
       for (const r of records) {
         const key = recordKey(r);
         if (!map.has(key)) {
@@ -497,6 +579,26 @@ Single-file app: index.html
       return kept;
     }
 
+    function completenessScore(r) {
+      let s = 0;
+      ["company_name","street","zip","city","phone","email","website"].forEach(k => { if (r[k]) s += 1; });
+      return s;
+    }
+
+    function parseAll(rawText) {
+      const blocks = splitIntoBlocks(rawText);
+      const extracted = [];
+      let skipped = 0;
+      for (const b of blocks) {
+        const rec = extractFromBlock(b);
+        if (rec) extracted.push(rec);
+        else skipped++;
+      }
+      const deduped = dedupe(extracted);
+      deduped.sort((a,b) => completenessScore(b) - completenessScore(a));
+      return { blocksCount: blocks.length, extractedCount: extracted.length, dedupedCount: deduped.length, skippedCount: skipped, records: deduped };
+    }
+
     // --- CSV export ---
     function csvEscape(val) {
       const s = (val ?? "").toString();
@@ -504,11 +606,25 @@ Single-file app: index.html
       return s;
     }
 
-    function recordsToCSV(records) {
-      const header = ["company_name","street","zip","city","phone","email","website","source","notes"];
-      const lines = [header.join(",")];
+    function formatZipForCSV(zip, mode) {
+      const z = (zip || "").trim();
+      if (!z) return "";
+      if (mode === "excel_text") {
+        // Excel-safe: leading zeros preserved
+        // Using leading apostrophe: Excel shows 01097 but stores as text.
+        // Other importers can strip the apostrophe if they want.
+        return "'" + z;
+      }
+      return z;
+    }
+
+    function recordsToCSV(records, zipMode) {
+      const lines = [HEADER.join(",")];
       for (const r of records) {
-        const row = header.map(h => csvEscape(r[h] || ""));
+        const row = HEADER.map(h => {
+          if (h === "zip") return csvEscape(formatZipForCSV(r.zip || "", zipMode));
+          return csvEscape(r[h] || "");
+        });
         lines.push(row.join(","));
       }
       return lines.join("\n");
@@ -526,57 +642,45 @@ Single-file app: index.html
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
-    function exportBatches(records, maxRowsPerFile) {
+    function exportBatches(records, maxRowsPerFile, zipMode) {
       const maxRows = Math.max(1, parseInt(maxRowsPerFile, 10) || 500);
       let fileNo = 1;
       for (let i = 0; i < records.length; i += maxRows) {
         const chunk = records.slice(i, i + maxRows);
-        const csv = recordsToCSV(chunk);
+        const csv = recordsToCSV(chunk, zipMode);
         downloadText(`leads${fileNo}.csv`, csv);
         fileNo++;
       }
     }
 
-    // --- Main pipeline ---
-    function completenessScore(r) {
-      let s = 0;
-      ["company_name","street","zip","city","phone","email","website"].forEach(k => { if (r[k]) s += 1; });
-      return s;
-    }
-
-    function parseAll(rawText) {
-      const blocks = splitIntoBlocks(rawText);
-
-      const extracted = [];
-      let skipped = 0;
-
-      for (const b of blocks) {
-        const rec = extractFromBlock(b);
-        if (rec) extracted.push(rec);
-        else skipped++;
+    async function copyToClipboard(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
       }
-
-      const deduped = dedupe(extracted);
-      deduped.sort((a,b) => completenessScore(b) - completenessScore(a));
-
-      return {
-        blocksCount: blocks.length,
-        extractedCount: extracted.length,
-        dedupedCount: deduped.length,
-        skippedCount: skipped,
-        records: deduped
-      };
+      // fallback
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      return ok;
     }
 
     // --- UI wiring ---
     const inputEl = document.getElementById("input");
     const maxRowsEl = document.getElementById("maxRows");
+    const zipModeEl = document.getElementById("zipMode");
     const analyzeBtn = document.getElementById("analyzeBtn");
     const exportBtn = document.getElementById("exportBtn");
+    const copyBtn = document.getElementById("copyBtn");
     const clearBtn = document.getElementById("clearBtn");
-    const previewEl = document.getElementById("preview");
     const statsEl = document.getElementById("stats");
     const hintEl = document.getElementById("hint");
+
+    const theadRow = document.getElementById("theadRow");
+    const tbodyRows = document.getElementById("tbodyRows");
 
     const errBox = document.getElementById("errBox");
     const errMsg = document.getElementById("errMsg");
@@ -587,7 +691,6 @@ Single-file app: index.html
       errMsg.textContent = (e && e.message) ? e.message : String(e);
       errBox.style.display = "block";
     }
-
     function clearError() {
       errMsg.textContent = "";
       errBox.style.display = "none";
@@ -608,28 +711,45 @@ Single-file app: index.html
       `).join("");
     }
 
-    function renderPreview(records) {
-      const head = ["company_name","street","zip","city","phone","email","website","source","notes"];
-      const lines = [head.join(",")];
-      const n = Math.min(20, records.length);
-      for (let i=0;i<n;i++) {
+    function renderTable(records) {
+      // header
+      theadRow.innerHTML = HEADER.map(h => `<th>${h}</th>`).join("");
+
+      // rows (limit preview)
+      const previewN = Math.min(50, records.length);
+      const zipMode = zipModeEl.value;
+
+      tbodyRows.innerHTML = "";
+      for (let i = 0; i < previewN; i++) {
         const r = records[i];
-        lines.push(head.map(h => csvEscape(r[h] || "")).join(","));
+        const cells = HEADER.map(h => {
+          let v = r[h] || "";
+          if (h === "zip") v = formatZipForCSV(v, zipMode); // preview shows what export does
+          return `<td title="${String(v).replace(/"/g,'&quot;')}">${String(v)}</td>`;
+        }).join("");
+        tbodyRows.innerHTML += `<tr>${cells}</tr>`;
       }
-      previewEl.textContent = lines.join("\n");
-      hintEl.innerHTML = records.length
-        ? `<span class="ok">OK:</span> Export erzeugt <b>leads1.csv</b>, <b>leads2.csv</b> … (max. ${parseInt(maxRowsEl.value||"500",10)} Zeilen/Datei).`
-        : `<span class="warn">Keine verwertbaren Firmen gefunden.</span> Tipp: Trenne Firmen mit Leerzeilen oder '---'.`;
+    }
+
+    function updateHint(recordsCount) {
+      const zipMode = zipModeEl.value === "excel_text"
+        ? `<span class="pill">PLZ: Excel-safe</span>`
+        : `<span class="pill">PLZ: Plain</span>`;
+
+      hintEl.innerHTML = recordsCount
+        ? `<span class="ok">OK</span> – ${recordsCount} Datensätze. ${zipMode} <span class="small">Preview zeigt max. 50 Zeilen.</span>`
+        : `<span class="warn">Keine verwertbaren Firmen gefunden.</span> <span class="small">Tipp: Firmen mit Leerzeilen oder '---' trennen.</span>`;
     }
 
     analyzeBtn.addEventListener("click", () => {
       try {
         clearError();
-        const raw = inputEl.value || "";
-        lastResult = parseAll(raw);
+        lastResult = parseAll(inputEl.value || "");
         renderStats(lastResult);
-        renderPreview(lastResult.records);
+        renderTable(lastResult.records);
+        updateHint(lastResult.records.length);
         exportBtn.disabled = !(lastResult.records && lastResult.records.length);
+        copyBtn.disabled = !(lastResult.records && lastResult.records.length);
       } catch (e) {
         showError(e);
       }
@@ -639,7 +759,21 @@ Single-file app: index.html
       try {
         clearError();
         if (!lastResult || !lastResult.records || !lastResult.records.length) return;
-        exportBatches(lastResult.records, maxRowsEl.value);
+        exportBatches(lastResult.records, maxRowsEl.value, zipModeEl.value);
+      } catch (e) {
+        showError(e);
+      }
+    });
+
+    copyBtn.addEventListener("click", async () => {
+      try {
+        clearError();
+        if (!lastResult || !lastResult.records || !lastResult.records.length) return;
+        const csv = recordsToCSV(lastResult.records, zipModeEl.value);
+        const ok = await copyToClipboard(csv);
+        hintEl.innerHTML = ok
+          ? `<span class="ok">CSV kopiert.</span> <span class="small">Du kannst es direkt in Sheets/Excel einfügen.</span>`
+          : `<span class="warn">Kopieren nicht möglich.</span> <span class="small">Nutze Export.</span>`;
       } catch (e) {
         showError(e);
       }
@@ -648,11 +782,19 @@ Single-file app: index.html
     clearBtn.addEventListener("click", () => {
       clearError();
       inputEl.value = "";
-      previewEl.textContent = "";
       statsEl.innerHTML = "";
-      hintEl.textContent = "";
+      theadRow.innerHTML = "";
+      tbodyRows.innerHTML = "";
+      hintEl.innerHTML = "";
       exportBtn.disabled = true;
+      copyBtn.disabled = true;
       lastResult = null;
+    });
+
+    // If user changes zip mode after analysis, refresh preview so they see the effect
+    zipModeEl.addEventListener("change", () => {
+      if (!lastResult) return;
+      renderTable(lastResult.records);
     });
   </script>
 </body>
