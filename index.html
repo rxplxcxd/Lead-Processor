@@ -12,22 +12,25 @@ h1{font-size:16px;margin:6px 0 10px;letter-spacing:.2px}
 textarea{width:100%;min-height:34vh;max-height:48vh;resize:vertical;padding:12px;border-radius:var(--r);border:var(--b);
 background:color-mix(in srgb, Canvas 92%, transparent);outline:none}
 textarea:focus{border-color:#69f6;box-shadow:0 0 0 3px #69f2}
-label{display:flex;gap:8px;align-items:center;font-size:12px;opacity:.9}
+label{display:flex;gap:8px;align-items:center;font-size:12px;opacity:.92}
 input,select,button{border-radius:12px;border:var(--b);background:color-mix(in srgb, Canvas 92%, transparent);padding:10px 12px;font-size:13px}
 input,select{padding:9px 10px}input[type="number"]{width:112px}
 button{cursor:pointer;touch-action:manipulation;transition:transform .05s,opacity .15s,box-shadow .15s}
 button:active{transform:translateY(1px)}button:focus{outline:none;box-shadow:0 0 0 3px #69f2}
 button[disabled]{opacity:.5;cursor:not-allowed}.btnP{border-color:#69f6}.btnG{opacity:.9}.right{margin-left:auto}
-.small{font-size:12px;opacity:.85}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-.ok{color:#0a7}.warn{color:#c00}
+.small{font-size:12px;opacity:.86}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.ok{color:#0a7}.warn{color:#c00}.muted{opacity:.75}
 .stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
 .stat{border:var(--b);border-radius:var(--r);padding:10px;background:color-mix(in srgb, Canvas 92%, transparent)}
 .stat .v{font-size:18px;font-weight:700;margin-top:2px}
 .err{display:none;border:1px solid #c006;border-radius:var(--r);padding:10px;margin:10px 0;background:color-mix(in srgb, Canvas 92%, transparent)}
-.err b{color:#c00}.pill{display:inline-block;border:var(--b);border-radius:999px;padding:2px 8px;font-size:12px;background:color-mix(in srgb, Canvas 94%, transparent)}
+.err b{color:#c00}.pill{display:inline-flex;align-items:center;gap:6px;border:var(--b);border-radius:999px;padding:2px 8px;font-size:12px;background:color-mix(in srgb, Canvas 94%, transparent)}
+.dot{width:10px;height:10px;border-radius:99px;display:inline-block}
+.g{background:#0a7}.y{background:#d8a400}.r{background:#c33}
+.bad{display:inline-flex;align-items:center;gap:6px;border:1px solid #c006;border-radius:999px;padding:2px 8px;font-size:12px;background:color-mix(in srgb, Canvas 94%, transparent)}
 .tableWrap{border:var(--b);border-radius:var(--r);overflow:hidden;background:color-mix(in srgb, Canvas 92%, transparent)}
 .tableScroll{max-height:40vh;overflow:auto;-webkit-overflow-scrolling:touch}
-table{border-collapse:collapse;min-width:820px;width:820px;font-size:12px}
+table{border-collapse:collapse;min-width:900px;width:900px;font-size:12px}
 thead th{position:sticky;top:0;background:color-mix(in srgb, Canvas 96%, transparent);border-bottom:var(--b);padding:10px 8px;text-align:left;white-space:nowrap;z-index:2}
 tbody td{border-bottom:1px solid #8883;padding:8px;white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis}
 tbody tr{cursor:pointer}tbody tr:hover td{background:color-mix(in srgb, Canvas 88%, transparent)}
@@ -35,32 +38,66 @@ tbody tr{cursor:pointer}tbody tr:hover td{background:color-mix(in srgb, Canvas 8
 .modal{max-width:520px;margin:0 auto;border:var(--b);border-radius:16px;background:color-mix(in srgb, Canvas 96%, transparent);overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.35)}
 .mh{display:flex;gap:10px;align-items:center;padding:12px;border-bottom:var(--b)}
 .mh .t{font-weight:800}.mb{padding:12px;display:grid;gap:10px}
-.kv{display:grid;grid-template-columns:120px 1fr;gap:6px 10px;border:var(--b);border-radius:var(--r);padding:10px;background:color-mix(in srgb, Canvas 94%, transparent);font-size:12px}
+.kv{display:grid;grid-template-columns:110px 1fr;gap:6px 10px;border:var(--b);border-radius:var(--r);padding:10px;background:color-mix(in srgb, Canvas 94%, transparent);font-size:12px}
 .kv .k{opacity:.75}.kv .v{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow-wrap:anywhere}
+.kv input{width:100%;padding:8px 10px;border-radius:10px;border:var(--b);background:color-mix(in srgb, Canvas 92%, transparent)}
 .bb{border:var(--b);border-radius:var(--r);background:color-mix(in srgb, Canvas 94%, transparent);overflow:hidden}
 .bh{padding:10px;border-bottom:var(--b)}pre{margin:0;padding:10px;white-space:pre-wrap;word-break:break-word;max-height:42vh;overflow:auto;
 font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
 mark{padding:0 2px;border-radius:4px;background:rgba(255,230,0,.35)}
-.mf{padding:12px;border-top:var(--b);display:flex;gap:10px;justify-content:flex-end}
+.mf{padding:12px;border-top:var(--b);display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+hr{border:0;border-top:1px solid #8884;margin:10px 0}
+.tog{display:inline-flex;align-items:center;gap:8px}
+.tog input{width:18px;height:18px}
+.smallTA{width:100%;min-height:56px;resize:vertical;padding:10px;border-radius:12px;border:var(--b);background:color-mix(in srgb, Canvas 92%, transparent);outline:none}
+.smallTA:focus{border-color:#69f6;box-shadow:0 0 0 3px #69f2}
 </style></head><body>
 <div class="wrap">
   <h1>Lead Extractor (Offline) – Rohtext → leads1.csv, leads2.csv …</h1>
+
   <div class="card small">
     <div><b>CSV:</b> <span class="mono">company_name,street,zip,city,phone,email,website,source,notes</span></div>
-    <div class="small">Email-Fix: erkennt harte Zeilenumbrüche, Trennstriche, Sonder-Hyphen, “name @ domain . de”, “name(at)domain(dot)de”.</div>
+    <div class="small">Auto-Analyse (700ms), Filter „fehlende Felder“, Fix-Modus, Duplikat-Warnung, Session Save/Load, Black/Whitelist.</div>
   </div>
 
   <div class="row" style="margin-top:10px"><textarea id="in" placeholder="Rohtext hier einfügen …"></textarea></div>
 
-  <div class="row">
-    <label>Max/CSV <input id="max" type="number" min="1" step="1" value="5000"></label>
-    <label>PLZ <select id="zip"><option value="excel_text" selected>Excel-safe</option><option value="plain">Plain</option></select></label>
-    <button id="go" class="btnP">Analysieren</button>
-  </div>
-  <div class="row">
-    <button id="exp" disabled>CSV exportieren</button>
-    <button id="cpy" disabled class="btnG">CSV kopieren</button>
-    <button id="clr" class="right btnG">Leeren</button>
+  <div class="card small">
+    <div class="row" style="margin:0">
+      <button id="normBtn" class="btnG">Absätze normalisieren</button>
+      <button id="saveBtn" class="btnG">Session speichern</button>
+      <label class="btnG" style="padding:0;border:none;background:none">
+        <span class="pill">Session laden</span>
+        <input id="loadFile" type="file" accept="application/json" style="display:none">
+      </label>
+      <span class="right pill" id="autoPill"><span class="dot y"></span>Auto</span>
+    </div>
+    <hr>
+    <div class="row" style="margin:0">
+      <label>Max/CSV <input id="max" type="number" min="1" step="1" value="5000"></label>
+      <label>PLZ <select id="zip"><option value="excel_text" selected>Excel-safe</option><option value="plain">Plain</option></select></label>
+      <button id="go" class="btnP">Analysieren</button>
+      <button id="exp" disabled>CSV exportieren</button>
+      <button id="cpy" disabled class="btnG">CSV kopieren</button>
+      <button id="clr" class="right btnG">Leeren</button>
+    </div>
+    <hr>
+    <div class="row" style="margin:0">
+      <label class="tog"><input id="fltOn" type="checkbox">Nur fehlende Felder</label>
+      <label class="tog"><input id="fltE" type="checkbox" checked>Email</label>
+      <label class="tog"><input id="fltP" type="checkbox" checked>Telefon</label>
+      <label class="tog"><input id="fltS" type="checkbox" checked>Straße</label>
+    </div>
+    <div class="row" style="margin:10px 0 0">
+      <div style="flex:1;min-width:180px">
+        <div class="small muted"><b>Blacklist</b> (eine Zeile pro Wort/Pattern)</div>
+        <textarea id="bl" class="smallTA" placeholder="Bewertungen&#10;Route&#10;Speichern"></textarea>
+      </div>
+      <div style="flex:1;min-width:180px">
+        <div class="small muted"><b>Whitelist</b> (hilft Firmennamen zu erkennen)</div>
+        <textarea id="wl" class="smallTA" placeholder="GmbH&#10;e.K.&#10;Praxis&#10;Bau&#10;Elektro"></textarea>
+      </div>
+    </div>
   </div>
 
   <div id="err" class="err"><div class="small"><b>Fehler:</b> <span id="errMsg" class="mono"></span></div></div>
@@ -75,16 +112,21 @@ mark{padding:0 2px;border-radius:4px;background:rgba(255,230,0,.35)}
 </div>
 
 <div id="bd" class="backdrop" role="dialog" aria-modal="true"><div class="modal">
-  <div class="mh"><div class="t">Debug – Datensatz</div><div id="ms" class="small"></div><div style="margin-left:auto"></div><button id="x">Schließen</button></div>
+  <div class="mh"><div class="t">Debug / Fix – Datensatz</div><div id="ms" class="small"></div><div style="margin-left:auto"></div><button id="x">Schließen</button></div>
   <div class="mb">
     <div class="kv" id="kv"></div>
     <div class="bb"><div class="bh small"><b>Original-Block</b> (markiert: Name/Adresse/Telefon/Email/Website)</div><pre id="bp"></pre></div>
   </div>
-  <div class="mf"><button id="cr">Zeile als CSV kopieren</button><button id="x2">Schließen</button></div>
+  <div class="mf">
+    <button id="saveFix" class="btnP">Speichern</button>
+    <button id="cr">Zeile als CSV kopieren</button>
+    <button id="x2">Schließen</button>
+  </div>
 </div></div>
 
 <script>
 "use strict";
+/* ===== Config ===== */
 const SRC="manual_copy", LIM=120, H=["company_name","street","zip","city","phone","email","website","source","notes"];
 const SOCIAL=["facebook.com","fb.com","instagram.com","linkedin.com","tiktok.com","youtube.com","youtu.be","xing.com","twitter.com","x.com","pinterest.com"];
 const START=[/^google\s*maps$/i,/^apple\s*maps$/i,/^impressum$/i,/^kontakt$/i,/^contact$/i];
@@ -93,18 +135,20 @@ const JUNK=[/^bewertungen?\b/i,/^öffnungszeiten?\b/i,/^ust-?id\b/i,/^ustid\b/i,
 const NOISE=[/cookie(s)?/i,/consent/i,/datenschutz/i,/privacy/i,/\b(alle\s*rechte\s*vorbehalten|copyright|©)\b/i,/\b(navigation|menu|menü)\b/i,/\b(home|startseite|kontakt|leistungen|über uns|karriere|jobs|blog|news|shop|warenkorb)\b/i,/\b(standort(e)?|route|anfahrt)\b/i,/\b(google\s*analytics|matomo|tracking)\b/i,/\b(javascript|css|html)\b/i,/\b(accept|ablehnen|zustimmen|weiter)\b/i,/newsletter/i,/haftung/i,/urheber/i,/verantwortlich/i,/redaktionell/i];
 const IMPR=[/\bust-?id\b/i,/\bregistergericht\b/i,/\bhandelsregister\b/i,/\bhrb\b/i,/\bhra\b/i,/\bvertretungsberechtigt\b/i,/\bgeschäftsführer\b/i,/\binhaber\b/i];
 
+/* ===== Small utils ===== */
 const $=id=>document.getElementById(id);
 const clamp=s=>{s=(s||"").trim();return s.length<=LIM?s:s.slice(0,LIM-1).trim()+"…";};
 const esc=s=>(s??"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 const escRe=s=>s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+const now=()=>Date.now();
 
 function deEnt(s){return (s||"").replace(/&amp;/gi,"&").replace(/&lt;/gi,"<").replace(/&gt;/gi,">").replace(/&quot;/gi,'"').replace(/&#39;/gi,"'");}
 function san(raw){
   return deEnt(raw||"")
-    .replace(/\u00AD/g,"")                          // soft hyphen
-    .replace(/[\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g,"") // zero-width
-    .replace(/[\u2010-\u2015\u2212]/g,"-")          // hyphen variants
-    .replace(/\u2028|\u2029/g,"\n")                 // weird line breaks
+    .replace(/\u00AD/g,"")
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g,"")
+    .replace(/[\u2010-\u2015\u2212]/g,"-")
+    .replace(/\u2028|\u2029/g,"\n")
     .replace(/[\u2022\u25CF\u25CB\u25A0\u25AA]/g,"•")
     .replace(/[★☆]+/g,"")
     .replace(/\u00A0/g," ")
@@ -120,67 +164,67 @@ function stripInline(l){
 }
 function stripLbl(s){return (s||"").replace(/^\s*(tel\.?|telefon|phone|mobil|fax)\s*[:\-]\s*/i,"")
   .replace(/^\s*(e-?mail)\s*[:\-]\s*/i,"").replace(/^\s*(web(site)?|internet|url)\s*[:\-]\s*/i,"").trim();}
+function dom(url){if(!url) return ""; let u=url.trim().replace(/^https?:\/\//i,"").replace(/^www\./i,""); return (u.split("/")[0]||"").toLowerCase();}
+function isSocial(u){const d=dom(u);return d?SOCIAL.some(h=>d===h||d.endsWith("."+h)):false;}
+function nPhone(raw){if(!raw) return ""; let s=stripLbl(stripInline(raw)); return s.replace(/[^\d +\/\-]/g,"").replace(/[ ]{2,}/g," ").trim();}
+function nWeb(raw){if(!raw) return ""; let s=stripLbl(stripInline(raw)).trim(); return s.replace(/^[\(\[\{<]+/,"").replace(/[\)\]\}>.,;!]+$/,"").replace(/(\?.*)$/,"");}
+
+/* ===== Black/White list ===== */
+function linesToTokens(v){
+  return (v||"").split(/\n+/).map(x=>x.trim()).filter(Boolean).slice(0,300);
+}
+function mkTokenRes(){
+  const bl=linesToTokens($("bl").value), wl=linesToTokens($("wl").value);
+  const blRe=bl.map(t=>new RegExp(escRe(t),"i"));
+  const wlRe=wl.map(t=>new RegExp(escRe(t),"i"));
+  return {bl,wl,blRe,wlRe};
+}
+let TOK=mkTokenRes();
+
+/* ===== Junk test (uses blacklist) ===== */
 function isJ(l){
   l=stripInline(l);
   if(!l||l.length<=2) return true;
   if(/^[\-\–\—\•\|\/\\\s]+$/.test(l)) return true;
+  if(TOK.blRe.some(r=>r.test(l))) return true;
   if(JUNK.some(r=>r.test(l))) return true;
   for(const r of NOISE) if(r.test(l)&&l.length<180) return true;
   return false;
 }
-function dom(url){if(!url) return ""; let u=url.trim().replace(/^https?:\/\//i,"").replace(/^www\./i,""); return (u.split("/")[0]||"").toLowerCase();}
-function isSocial(u){const d=dom(u);return d?SOCIAL.some(h=>d===h||d.endsWith("."+h)):false;}
 
-function nPhone(raw){if(!raw) return ""; let s=stripLbl(stripInline(raw)); return s.replace(/[^\d +\/\-]/g,"").replace(/[ ]{2,}/g," ").trim();}
-function nWeb(raw){
-  if(!raw) return "";
-  let s=stripLbl(stripInline(raw)).trim();
-  s=s.replace(/^[\(\[\{<]+/,"").replace(/[\)\]\}>.,;!]+$/,"").replace(/(\?.*)$/,"");
-  return s;
-}
-
-/* ===== Email: NEW stronger pipeline =====
-   Fixes: hyphen-linebreak in domain, linebreak after @, dot-separated across whitespace,
-   "name @ domain . de", "name(at)domain(dot)de", and aggressive glue-variants.
-*/
+/* ===== Email: strongest practical extraction ===== */
 function emailVariants(t){
-  t=san(t||"");
-  const v=[];
+  t=san(t||""); const v=[];
   v.push(t);
   v.push(t.replace(/\r/g,""));
-  v.push(t.replace(/\n+/g," "));                 // line breaks -> spaces
-  v.push(t.replace(/-\s*\n\s*/g,""));            // hyphen newline join
-  v.push(t.replace(/-\s+/g,"-"));                // normalize hyphen spaces
-  v.push(t.replace(/\s*@\s*/g,"@").replace(/\s*\.\s*/g,".")); // spaced @ and dots
-  v.push(t.replace(/\s+/g,""));                  // full glue
-  // Obfuscation normalize (at/dot) – keep spaces flexible
+  v.push(t.replace(/\n+/g," "));
+  v.push(t.replace(/-\s*\n\s*/g,""));                 // hyphen newline join
+  v.push(t.replace(/@\s*\n\s*/g,"@").replace(/\.\s*\n\s*/g,"."));
+  v.push(t.replace(/\s*@\s*/g,"@").replace(/\s*\.\s*/g,"."));
   v.push(t.replace(/\(\s*at\s*\)|\[\s*at\s*\]|\s+at\s+/ig,"@")
          .replace(/\(\s*dot\s*\)|\[\s*dot\s*\]|\s+dot\s+/ig,".")
          .replace(/\s*@\s*/g,"@").replace(/\s*\.\s*/g,"."));
-  // Join common “@ \n domain”
-  v.push(t.replace(/@\s*\n\s*/g,"@").replace(/\.\s*\n\s*/g,"."));
+  v.push(t.replace(/\s+/g,""));                       // full glue
   return v;
 }
 function cleanEmail(s){
   s=(s||"").toLowerCase();
   s=s.replace(/^[^\w]+|[^\w]+$/g,"").replace(/[>,;)\]]+$/g,"");
-  s=stripLbl(s);
-  s=s.replace(/\s*@\s*/g,"@").replace(/\s*\.\s*/g,".");
-  return s.trim();
+  s=stripLbl(s).replace(/\s*@\s*/g,"@").replace(/\s*\.\s*/g,".");
+  // normalize fullwidth @ / dots sometimes
+  s=s.replace(/＠/g,"@").replace(/。/g,".").trim();
+  return s;
 }
 function findEmails(t){
   const found=new Set();
   const re=/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,24}/gi;
-  for(const src of emailVariants(t)){
-    const m=src.match(re)||[];
-    m.forEach(x=>found.add(cleanEmail(x)));
-  }
-  // extra pass for cases like "name@" and "domain.de" separated: try local window join
-  const lines=san(t||"").split("\n").map(x=>x.trim()).filter(Boolean);
-  for(let i=0;i<lines.length;i++){
-    const a=lines[i], b=lines[i+1]||"", c=lines[i+2]||"";
-    const joined=[a+" "+b, a+" "+b+" "+c, a+b, a+b+c].join(" ");
-    (joined.match(re)||[]).forEach(x=>found.add(cleanEmail(x)));
+  for(const src of emailVariants(t)) (src.match(re)||[]).forEach(x=>found.add(cleanEmail(x)));
+  // window-join lines: catches "name@" then next line "domain.de"
+  const L=san(t||"").split("\n").map(x=>x.trim()).filter(Boolean);
+  for(let i=0;i<L.length;i++){
+    const a=L[i], b=L[i+1]||"", c=L[i+2]||"";
+    const j=[a+" "+b, a+" "+b+" "+c, a+b, a+b+c].join(" ");
+    (j.match(re)||[]).forEach(x=>found.add(cleanEmail(x)));
   }
   let valid=[...found].filter(e=>/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,24}$/.test(e));
   valid.sort((A,B)=>{
@@ -190,7 +234,7 @@ function findEmails(t){
   return valid;
 }
 
-/* Websites */
+/* ===== Websites ===== */
 function validDomCand(d){
   d=d.toLowerCase().replace(/^[.]+|[.]+$/g,"");
   if(d.length<6||!d.includes(".")) return false;
@@ -200,8 +244,7 @@ function validDomCand(d){
   return true;
 }
 function findWebsites(text){
-  const t=san(text||"");
-  const urls=new Set();
+  const t=san(text||""), urls=new Set();
   (t.match(/\bhttps?:\/\/[^\s<>"')]+/gi)||[]).forEach(u=>urls.add(u));
   (t.match(/\bwww\.[^\s<>"')]+\b/gi)||[]).forEach(u=>urls.add(u));
   (t.match(/\b(?![A-Z0-9._%+-]+@)([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/gi)||[]).forEach(d=>{
@@ -213,18 +256,13 @@ function findWebsites(text){
     urls.add(d);
   });
   const list=[...urls].map(nWeb).filter(Boolean);
-  const by=new Map();
-  for(const u of list){
-    const d=dom(u); if(!d) continue;
-    const prev=by.get(d);
-    const sc=x=>(/^https?:\/\//i.test(x)?2:0)+(/^www\./i.test(x)?1:0);
-    if(!prev || sc(u)>sc(prev)) by.set(d,u);
-  }
+  const by=new Map(), sc=x=>(/^https?:\/\//i.test(x)?2:0)+(/^www\./i.test(x)?1:0);
+  for(const u of list){const d=dom(u); if(!d) continue; const p=by.get(d); if(!p||sc(u)>sc(p)) by.set(d,u);}
   return [...by.values()];
 }
 function uniqDomains(urls){const s=new Set(); for(const u of (urls||[])){const d=dom(u); if(d) s.add(d);} return [...s];}
 
-/* Address */
+/* ===== Address ===== */
 function zipCity(text){
   const t=stripInline(san(text||""));
   const re=/\b(\d{5})\s+([A-Za-zÀ-ÖØ-öø-ÿÄÖÜäöüß\.\- ]{2,})\b/g; let m;
@@ -271,8 +309,7 @@ function findStreet(text){
   return "";
 }
 function phones(text){
-  const t=stripInline(san(text||""));
-  const c=new Set();
+  const t=stripInline(san(text||"")), c=new Set();
   let m; const re1=/(?:tel\.?|telefon|phone|mobil|fax)\s*[:\-]?\s*([+\d][\d \-\/]{6,})/gi;
   while((m=re1.exec(t))!==null) c.add(nPhone(m[1]));
   (t.match(/\b(?:\+49|0)\s*[\d][\d \-\/]{6,}\b/g)||[]).forEach(p=>c.add(nPhone(p)));
@@ -295,10 +332,11 @@ function looksName(line){
   if(isJ(l)) return false;
   if(/^[A-Za-zÄÖÜäöüß ]{2,25}\s*:\s*/.test(l)) return false;
   if(isAddr(l)||isContact(l)) return false;
+  if(TOK.wlRe.some(r=>r.test(l))) return true; // whitelist boost
   return /[A-Za-zÄÖÜäöüß]/.test(l);
 }
 
-/* Split blocks */
+/* ===== Split blocks ===== */
 function splitBlocks(raw){
   const t=norm(raw); if(!t) return [];
   const lines=t.split("\n").map(l=>l.trim());
@@ -315,7 +353,24 @@ function splitBlocks(raw){
   push(); return blocks;
 }
 
-/* Debug highlight */
+/* ===== Absätze normalisieren ===== */
+function normalizeParagraphs(raw){
+  const t=norm(raw); if(!t) return "";
+  const lines=t.split("\n");
+  let out=[], cur=[];
+  const core=arr=>{const s=arr.join("\n"); return /\b\d{5}\b/.test(s)||/@/.test(s)||/(tel|telefon|phone|mobil|fax)\b/i.test(s)||/\+49|(^|\s)0\d{2,}/.test(s)||/https?:\/\//i.test(s)||/\bwww\./i.test(s);};
+  for(let i=0;i<lines.length;i++){
+    const ln=lines[i].trim();
+    if(!ln){ out.push(""); cur=[]; continue; }
+    if(SEP.test(ln)){ out.push("",ln,""); cur=[]; continue; }
+    // if new likely company line and current chunk already has signals => insert blank line
+    if(looksName(ln) && cur.length && core(cur) && out[out.length-1]!=="") out.push("");
+    out.push(lines[i]); cur.push(ln);
+  }
+  return out.join("\n").replace(/\n{3,}/g,"\n\n").trim();
+}
+
+/* ===== Debug highlight ===== */
 function hiBlock(raw, used){
   const usedSet=new Set(Object.values(used||{}).filter(Boolean).map(x=>stripInline(san(x)).trim()));
   return (raw||"").split("\n").map(l=>{
@@ -324,7 +379,7 @@ function hiBlock(raw, used){
   }).join("\n");
 }
 
-/* CSV */
+/* ===== CSV + download ===== */
 function csvEsc(v){v=(v??"").toString();return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
 function zipFmt(z,mode){z=(z||"").trim(); if(!z) return ""; return mode==="excel_text"?"'"+z:z;}
 function rowLine(r,zipMode){return H.map(k=>k==="zip"?csvEsc(zipFmt(r.zip||"",zipMode)):csvEsc(r[k]||"")).join(",");}
@@ -341,7 +396,7 @@ async function clip(text){
   const ok=document.execCommand("copy"); ta.remove(); return ok;
 }
 
-/* Neighbor street inference */
+/* ===== Neighbor street inference ===== */
 function inferStreet(lines, zip, city){
   if(!zip||!city) return {street:"",used:""};
   const re=new RegExp("\\b"+escRe(zip)+"\\b\\s+"+escRe(city)+"\\b","i");
@@ -355,7 +410,16 @@ function inferStreet(lines, zip, city){
   return {street:"",used:""};
 }
 
-/* Extract */
+/* ===== Quality score ===== */
+function quality(r){
+  const hasName=!!r.company_name, hasAddr=!!((r.zip&&r.city)||r.street);
+  const hasC=(r.phone||r.email||r.website)?1:0;
+  if(hasName && hasAddr && hasC) return "g";
+  if((hasName && hasC) || (hasAddr && hasC) || (hasName && hasAddr)) return "y";
+  return "r";
+}
+
+/* ===== Extract ===== */
 function extract(block){
   const raw=(block||"").split("\n").map(l=>l.trim()).filter(Boolean);
   const lines=raw.map(l=>stripInline(san(l))).filter(Boolean);
@@ -421,15 +485,14 @@ function extract(block){
       ||kept.find(l=>findWebsites(l).some(u=>dom(u)===d))||"";
   }
 
-  return {
-    r:{company_name:name,street,zip,city,phone,email,website,source:SRC,notes:clamp(notes.join(", "))},
-    d:{raw:block,used:{nameLine:nameUsed,addressLine:addrUsed,phoneLine,emailLine,websiteLine:webLine}}
-  };
+  const r={company_name:name,street,zip,city,phone,email,website,source:SRC,notes:clamp(notes.join(", "))};
+  r._q=quality(r);
+  return {r,d:{raw:block,used:{nameLine:nameUsed,addressLine:addrUsed,phoneLine,emailLine,websiteLine:webLine}}};
 }
 
-/* Dedupe */
+/* ===== Dedupe + keys ===== */
 function nk(s){return (s||"").toLowerCase().replace(/[^a-z0-9äöüß]+/gi," ").replace(/\s+/g," ").trim();}
-function key(r){
+function recKey(r){
   const d=nk(dom(r.website)), p=nk(r.phone), n=nk(r.company_name), z=nk((r.zip||"")+" "+(r.city||""));
   if(d) return "d:"+d; if(p) return "p:"+p; if(n&&z) return "nzc:"+n+"|"+z; if(n) return "n:"+n;
   return "u:"+Math.random().toString(36).slice(2);
@@ -440,11 +503,12 @@ function merge(a,b){
   const s=new Set();
   [a.notes,b.notes].forEach(n=>(n||"").split(",").map(x=>x.trim()).filter(Boolean).forEach(x=>s.add(x)));
   s.add("merged"); o.notes=clamp([...s].join(", "));
+  o._q=quality(o);
   return o;
 }
 function dedupe(rows){
   const m=new Map();
-  for(const r of rows){ const k=key(r); m.set(k, m.has(k)?merge(m.get(k),r):r); }
+  for(const r of rows){ const k=recKey(r); m.set(k, m.has(k)?merge(m.get(k),r):r); }
   return [...m.values()];
 }
 function score(r){let s=0;["company_name","street","zip","city","phone","email","website"].forEach(k=>{if(r[k]) s++;});return s;}
@@ -456,47 +520,184 @@ function parseAll(raw){
   return {blocks:blocks.length, extracted:rows.length, deduped:ded.length, skipped, ded, dbg};
 }
 
-/* UI */
+/* ===== Duplicate warnings (preview only) ===== */
+function normNameCity(r){
+  const name=nk(r.company_name), city=nk(r.city), zip=nk(r.zip);
+  const keep=(name+" "+city+" "+zip).trim();
+  return keep;
+}
+function dupFlags(dbg){
+  const byPhone=new Map(), byDom=new Map(), byNC=new Map();
+  const flags=new Array(dbg.length).fill(false);
+  const phoneK=r=>nk(r.phone);
+  const domK=r=>nk(dom(r.website));
+  const ncK=r=>normNameCity(r);
+  for(let i=0;i<dbg.length;i++){
+    const r=dbg[i].r;
+    const p=phoneK(r), d=domK(r), nc=ncK(r);
+    if(p){ (byPhone.get(p)||byPhone.set(p,[]).get(p)).push(i); }
+    if(d){ (byDom.get(d)||byDom.set(d,[]).get(d)).push(i); }
+    if(nc && r.company_name && (r.city||r.zip)){ (byNC.get(nc)||byNC.set(nc,[]).get(nc)).push(i); }
+  }
+  const mark=arr=>{ if(arr.length>1) arr.forEach(i=>flags[i]=true); };
+  byPhone.forEach(mark); byDom.forEach(mark); byNC.forEach(mark);
+  return flags;
+}
+
+/* ===== Session Save/Load (fixes by key) ===== */
+function buildFixes(dbg){
+  const fixes={};
+  for(const it of dbg){
+    const k=recKey(it.r);
+    fixes[k]={...it.r}; // includes any manual edits
+  }
+  return fixes;
+}
+function applyFixes(result, fixes){
+  if(!fixes) return result;
+  for(const it of result.dbg){
+    const k=recKey(it.r);
+    if(fixes[k]){ // overwrite fields (but keep debug raw/used)
+      const src=fixes[k];
+      for(const f of H.concat(["_q"])) if(src[f]!==undefined) it.r[f]=src[f];
+      it.r._q=quality(it.r);
+    }
+  }
+  result.ded=dedupe(result.dbg.map(x=>x.r)).sort((a,b)=>score(b)-score(a));
+  result.deduped=result.ded.length;
+  return result;
+}
+
+/* ===== UI ===== */
 const inEl=$("in"), maxEl=$("max"), zipEl=$("zip");
 const go=$("go"), exp=$("exp"), cpy=$("cpy"), clr=$("clr");
 const st=$("st"), hint=$("hint"), th=$("th"), tb=$("tb");
 const err=$("err"), errMsg=$("errMsg");
-const bd=$("bd"), x=$("x"), x2=$("x2"), ms=$("ms"), kv=$("kv"), bp=$("bp"), cr=$("cr");
-let last=null, sel=null;
+const bd=$("bd"), x=$("x"), x2=$("x2"), ms=$("ms"), kv=$("kv"), bp=$("bp"), cr=$("cr"), saveFix=$("saveFix");
+const normBtn=$("normBtn"), saveBtn=$("saveBtn"), loadFile=$("loadFile"), autoPill=$("autoPill");
+const fltOn=$("fltOn"), fltE=$("fltE"), fltP=$("fltP"), fltS=$("fltS");
+
+let last=null, sel=null, selIdx=-1, debT=0, lastAutoAt=0, lastSessionFixes=null;
 
 function showErr(e){errMsg.textContent=(e&&e.message)?e.message:String(e); err.style.display="block";}
 function clearErr(){err.style.display="none"; errMsg.textContent="";}
+
 function renderStats(r){
   st.innerHTML=[["Blöcke erkannt",r.blocks],["Extrahiert (vor Dedupe)",r.extracted],["Nach Dedupe/Merge",r.deduped],["Übersprungen (Müll/zu wenig Signale)",r.skipped]]
     .map(([l,v])=>`<div class="stat"><div class="small">${l}</div><div class="v">${v}</div></div>`).join("");
 }
 function renderHint(r){
-  const pill=zipEl.value==="excel_text"?`<span class="pill">PLZ: Excel-safe</span>`:`<span class="pill">PLZ: Plain</span>`;
+  const pill=zipEl.value==="excel_text"?`<span class="pill"><span class="dot y"></span>PLZ: Excel-safe</span>`:`<span class="pill"><span class="dot y"></span>PLZ: Plain</span>`;
   hint.innerHTML=r?.dbg?.length?`<span class="ok">OK</span> – ${r.dbg.length} Zeilen (Preview). Export: ${r.deduped} Datensätze. ${pill}`:`<span class="warn">Keine Datensätze.</span>`;
 }
-function renderTable(dbg){
-  th.innerHTML=H.map(h=>`<th>${h}</th>`).join(""); tb.innerHTML="";
-  const n=Math.min(80, dbg.length), mode=zipEl.value;
+
+function filteredDbg(){
+  if(!last?.dbg) return [];
+  if(!fltOn.checked) return last.dbg;
+  const needE=fltE.checked, needP=fltP.checked, needS=fltS.checked;
+  return last.dbg.filter(it=>{
+    const r=it.r;
+    const missE=needE && !r.email;
+    const missP=needP && !r.phone;
+    const missS=needS && !r.street;
+    return missE||missP||missS;
+  });
+}
+
+function renderTable(){
+  const dbg=filteredDbg();
+  const dup=dupFlags(dbg);
+  const mode=zipEl.value;
+
+  const cols=["q","dup"].concat(H);
+  th.innerHTML=cols.map(h=>`<th>${h}</th>`).join("");
+  tb.innerHTML="";
+
+  const n=Math.min(120, dbg.length);
   for(let i=0;i<n;i++){
-    const r=dbg[i].r, tr=document.createElement("tr");
-    tr.innerHTML=H.map(h=>{let v=r[h]||""; if(h==="zip") v=zipFmt(v,mode); return `<td title="${esc(String(v))}">${esc(String(v))}</td>`;}).join("");
-    tr.addEventListener("click",()=>openDbg(i)); tb.appendChild(tr);
+    const it=dbg[i], r=it.r;
+    const tr=document.createElement("tr");
+    const q=r._q||quality(r);
+    const qCell=`<span class="pill"><span class="dot ${q}"></span>${q==="g"?"Grün":q==="y"?"Gelb":"Rot"}</span>`;
+    const dCell=dup[i]?`<span class="bad">⚠️ ähnlich</span>`:`<span class="muted">—</span>`;
+    const rowHtml=[`<td>${qCell}</td>`,`<td>${dCell}</td>`].concat(H.map(h=>{
+      let v=r[h]||""; if(h==="zip") v=zipFmt(v,mode);
+      return `<td title="${esc(String(v))}">${esc(String(v))}</td>`;
+    })).join("");
+    tr.innerHTML=rowHtml;
+    tr.addEventListener("click",()=>openDbgFromFiltered(i));
+    tb.appendChild(tr);
   }
 }
-function openDbg(i){
-  if(!last?.dbg?.[i]) return;
-  sel=last.dbg[i];
+
+function openDbgFromFiltered(i){
+  const dbg=filteredDbg();
+  const it=dbg[i]; if(!it) return;
+  sel=it; selIdx=last.dbg.indexOf(it);
+  openDbg(selIdx);
+}
+
+function openDbg(idx){
+  if(!last?.dbg?.[idx]) return;
+  sel=last.dbg[idx]; selIdx=idx;
   const r=sel.r, u=sel.d.used||{}, mode=zipEl.value;
   ms.textContent=r.company_name?`– ${r.company_name}`:`– (Name leer)`;
-  const pairs=[["company_name",r.company_name],["street",r.street],["zip",zipFmt(r.zip,mode)],["city",r.city],["phone",r.phone],["email",r.email],["website",r.website],["source",r.source],["notes",r.notes],
-    ["—",""],["Used line (Name)",u.nameLine||"(keine)"],["Used line (Adresse)",u.addressLine||"(keine)"],["Used line (Telefon)",u.phoneLine||"(keine)"],["Used line (Email)",u.emailLine||"(keine)"],["Used line (Website)",u.websiteLine||"(keine)"]];
-  kv.innerHTML=pairs.map(([k,v])=>`<div class="k">${esc(k)}</div><div class="v">${esc(v||"")}</div>`).join("");
-  bp.innerHTML=hiBlock(sel.d.raw||"", u); bd.style.display="block";
+
+  // FIX-MODE inputs (editable)
+  const fields=[
+    ["company_name","Firma",r.company_name],
+    ["street","Straße",r.street],
+    ["zip","PLZ",zipFmt(r.zip,mode)],
+    ["city","Ort",r.city],
+    ["phone","Telefon",r.phone],
+    ["email","Email",r.email],
+    ["website","Website",r.website],
+    ["notes","Notes",r.notes],
+  ];
+  kv.innerHTML=fields.map(([k,label,v])=>`
+    <div class="k">${esc(k)}</div>
+    <div class="v"><input data-k="${esc(k)}" value="${esc(v||"")}" placeholder="${esc(label)}"></div>
+  `).join("")+[
+    ["Used line (Name)",u.nameLine||"(keine)"],
+    ["Used line (Adresse)",u.addressLine||"(keine)"],
+    ["Used line (Telefon)",u.phoneLine||"(keine)"],
+    ["Used line (Email)",u.emailLine||"(keine)"],
+    ["Used line (Website)",u.websiteLine||"(keine)"]
+  ].map(([k,v])=>`<div class="k muted">${esc(k)}</div><div class="v muted">${esc(v||"")}</div>`).join("");
+
+  bp.innerHTML=hiBlock(sel.d.raw||"", u);
+  bd.style.display="block";
 }
-function closeDbg(){bd.style.display="none"; sel=null;}
+
+function closeDbg(){bd.style.display="none"; sel=null; selIdx=-1;}
 x.addEventListener("click",closeDbg); x2.addEventListener("click",closeDbg);
 bd.addEventListener("click",e=>{ if(e.target===bd) closeDbg(); });
 document.addEventListener("keydown",e=>{ if(e.key==="Escape" && bd.style.display==="block") closeDbg(); });
+
+saveFix.addEventListener("click",()=>{
+  if(!sel) return;
+  const inputs=[...kv.querySelectorAll("input[data-k]")];
+  const r=sel.r;
+  for(const inp of inputs){
+    const k=inp.dataset.k;
+    let v=inp.value||"";
+    if(k==="zip"){ // strip excel prefix if user kept it
+      v=v.trim(); if(v.startsWith("'")) v=v.slice(1);
+      v=v.replace(/[^\d]/g,"").slice(0,5);
+    }
+    if(k==="email") v=cleanEmail(v);
+    r[k]=v;
+  }
+  r._q=quality(r);
+
+  // Rebuild deduped + refresh stats/table/hint
+  last.ded=dedupe(last.dbg.map(x=>x.r)).sort((a,b)=>score(b)-score(a));
+  last.deduped=last.ded.length;
+  renderStats(last); renderTable(); renderHint(last);
+  exp.disabled=!last.ded.length; cpy.disabled=!last.ded.length;
+  saveFix.textContent="Gespeichert ✓";
+  setTimeout(()=>saveFix.textContent="Speichern",900);
+});
 
 cr.addEventListener("click", async ()=>{
   if(!sel) return;
@@ -505,14 +706,29 @@ cr.addEventListener("click", async ()=>{
   setTimeout(()=>cr.textContent="Zeile als CSV kopieren",1100);
 });
 
-go.addEventListener("click",()=>{
-  try{
-    clearErr();
-    last=parseAll(inEl.value||"");
-    renderStats(last); renderTable(last.dbg); renderHint(last);
-    exp.disabled=!last.ded.length; cpy.disabled=!last.ded.length;
-  }catch(e){showErr(e);}
+function analyze(source){
+  TOK=mkTokenRes();
+  clearErr();
+  last=parseAll(inEl.value||"");
+  if(lastSessionFixes) last=applyFixes(last, lastSessionFixes);
+  renderStats(last); renderTable(); renderHint(last);
+  exp.disabled=!last.ded.length; cpy.disabled=!last.ded.length;
+  if(source==="auto"){ autoPill.innerHTML=`<span class="dot g"></span>Auto`; lastAutoAt=now(); setTimeout(()=>{if(now()-lastAutoAt>800) autoPill.innerHTML=`<span class="dot y"></span>Auto`;},850); }
+}
+
+go.addEventListener("click",()=>{ try{analyze("btn");}catch(e){showErr(e);} });
+
+/* Auto-Analyse debounce (700ms) */
+inEl.addEventListener("input",()=>{
+  clearTimeout(debT);
+  debT=setTimeout(()=>{ try{analyze("auto");}catch(e){showErr(e);} },700);
 });
+$("bl").addEventListener("input",()=>{ clearTimeout(debT); debT=setTimeout(()=>{try{analyze("auto");}catch(e){showErr(e);} },700); });
+$("wl").addEventListener("input",()=>{ clearTimeout(debT); debT=setTimeout(()=>{try{analyze("auto");}catch(e){showErr(e);} },700); });
+
+/* Filters rerender only */
+[fltOn,fltE,fltP,fltS,zipEl].forEach(el=>el.addEventListener("change",()=>{ if(last){renderTable(); renderHint(last);} }));
+
 exp.addEventListener("click",()=>{
   try{
     clearErr();
@@ -531,7 +747,44 @@ cpy.addEventListener("click", async ()=>{
 });
 clr.addEventListener("click",()=>{
   clearErr(); inEl.value=""; st.innerHTML=""; th.innerHTML=""; tb.innerHTML=""; hint.innerHTML="";
-  exp.disabled=true; cpy.disabled=true; last=null; closeDbg();
+  exp.disabled=true; cpy.disabled=true; last=null; lastSessionFixes=null; closeDbg();
 });
-zipEl.addEventListener("change",()=>{ if(last){renderTable(last.dbg); renderHint(last);} });
+
+/* Absätze normalisieren */
+normBtn.addEventListener("click",()=>{
+  inEl.value=normalizeParagraphs(inEl.value||"");
+  try{analyze("btn");}catch(e){showErr(e);}
+});
+
+/* Session save/load */
+function dlJson(name,obj){
+  const blob=new Blob([JSON.stringify(obj,null,2)],{type:"application/json;charset=utf-8"});
+  const url=URL.createObjectURL(blob); const a=document.createElement("a");
+  a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+saveBtn.addEventListener("click",()=>{
+  const session={
+    v:1, ts:new Date().toISOString(),
+    input: inEl.value||"",
+    settings:{max:maxEl.value, zip:zipEl.value, bl:$("bl").value||"", wl:$("wl").value||""},
+    fixes: last?.dbg?buildFixes(last.dbg):{}
+  };
+  dlJson(`lead_session_${Date.now()}.json`, session);
+});
+loadFile.addEventListener("change",async ()=>{
+  const f=loadFile.files?.[0]; if(!f) return;
+  try{
+    const txt=await f.text();
+    const s=JSON.parse(txt);
+    inEl.value=s.input||"";
+    maxEl.value=s.settings?.max||"5000";
+    zipEl.value=s.settings?.zip||"excel_text";
+    $("bl").value=s.settings?.bl||"";
+    $("wl").value=s.settings?.wl||"";
+    lastSessionFixes=s.fixes||null;
+    analyze("btn");
+  }catch(e){showErr(e);}
+  loadFile.value="";
+});
 </script></body></html>
