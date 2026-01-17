@@ -64,7 +64,7 @@
   <div class="row small">
     <div class="panel" style="width:100%">
       <div><b>CSV Spalten:</b> <span class="mono">company_name,street,zip,city,phone,email,website,source,notes</span></div>
-      <div class="small">Konservativ: Wenn unklar → Feld leer. Kein Raten. Keine Webrequests.</div>
+      <div class="small">Strenger Filter: Müll wird konsequent ignoriert. Records nur bei ausreichender Datenqualität.</div>
     </div>
   </div>
 
@@ -78,7 +78,7 @@
     <label class="small">PLZ Export:
       <select id="zipMode">
         <option value="excel_text" selected>Excel-safe (01097 bleibt 01097)</option>
-        <option value="plain">Plain (Excel kann führende 0 verlieren)</option>
+        <option value="plain">Plain</option>
       </select>
     </label>
 
@@ -116,24 +116,38 @@
     const HEADER = ["company_name","street","zip","city","phone","email","website","source","notes"];
 
     const SOCIAL_HOST_BLACKLIST = [
-      "facebook.com", "fb.com", "instagram.com", "linkedin.com", "tiktok.com",
-      "youtube.com", "youtu.be", "xing.com", "twitter.com", "x.com", "pinterest.com"
+      "facebook.com","fb.com","instagram.com","linkedin.com","tiktok.com",
+      "youtube.com","youtu.be","xing.com","twitter.com","x.com","pinterest.com"
     ];
 
-    // Start-/Blockmarker (sehr wichtig für Segmentierung)
+    // Marker & harte Trenner
     const BLOCK_START_MARKERS = [
-      /^google\s*maps$/i,
-      /^apple\s*maps$/i,
-      /^impressum$/i,
-      /^kontakt$/i,
-      /^contact$/i,
-      /^anschrift\b/i,
-      /^adresse\b/i
+      /^google\s*maps$/i, /^apple\s*maps$/i, /^impressum$/i, /^kontakt$/i, /^contact$/i
     ];
-
-    // harte Trenner
     const HARD_SEPARATOR_LINE = /^(\-{3,}|={3,}|\*{3,}|•{3,}|_{3,})$/;
 
+    // KRITISCHE Müllzeilen (die in deinen CSVs als "Firma" auftauchten)
+    const JUNK_LINE_PATTERNS = [
+      /^bewertungen?\b/i,
+      /^öffnungszeiten?\b/i,
+      /^ust-?id\b/i,
+      /^ustid\b/i,
+      /^umsatzsteuer\b/i,
+      /^handelsregister\b/i,
+      /^registergericht\b/i,
+      /^hrb\b/i,
+      /^hra\b/i,
+      /^impressum\s*:/i,
+      /^datenschutz\s*:/i,
+      /^route\b/i,
+      /^speichern\b/i,
+      /^teilen\b/i,
+      /^in\s+der\s+nähe\b/i,
+      /^cookie\b/i,
+      /^navigation\b/i,
+    ];
+
+    // allgemeine Noise Patterns (Footer, Menüs etc.)
     const NOISE_PATTERNS = [
       /cookie(s)?/i, /consent/i, /datenschutz/i, /privacy/i,
       /\b(alle\s*rechte\s*vorbehalten|copyright|©)\b/i,
@@ -143,15 +157,12 @@
       /\b(google\s*analytics|matomo|tracking)\b/i,
       /\b(javascript|css|html)\b/i,
       /\b(accept|ablehnen|zustimmen|weiter)\b/i,
-      /newsletter/i,
-      /haftung/i, /urheber/i, /verantwortlich/i, /redaktionell/i
+      /newsletter/i, /haftung/i, /urheber/i, /verantwortlich/i, /redaktionell/i
     ];
 
     const IMPRINT_HINTS = [
-      /\bust-?id\b/i, /\bustid\b/i, /\bumsatzsteuer\b/i,
-      /\bregistergericht\b/i, /\bhandelsregister\b/i,
-      /\bhrb\b/i, /\bhra\b/i, /\bvertretungsberechtigt\b/i,
-      /\bgeschäftsführer\b/i, /\binhaber\b/i
+      /\bust-?id\b/i, /\bregistergericht\b/i, /\bhandelsregister\b/i, /\bhrb\b/i, /\bhra\b/i,
+      /\bvertretungsberechtigt\b/i, /\bgeschäftsführer\b/i, /\binhaber\b/i
     ];
 
     function normalizeSpaces(s) {
@@ -168,6 +179,7 @@
       if (t.length <= DEFAULT_NOTES_LIMIT) return t;
       return t.slice(0, DEFAULT_NOTES_LIMIT - 1).trim() + "…";
     }
+
     function stripLabels(s) {
       return (s || "")
         .replace(/^\s*(tel\.?|telefon|phone|mobil|fax)\s*[:\-]\s*/i, "")
@@ -182,6 +194,7 @@
       s = s.replace(/[ ]{2,}/g, " ").trim();
       return s;
     }
+
     function normalizeWebsite(raw) {
       if (!raw) return "";
       let s = stripLabels(raw).trim();
@@ -189,6 +202,7 @@
       s = s.replace(/(\?.*)$/, "");
       return s;
     }
+
     function getDomain(url) {
       if (!url) return "";
       let u = url.trim();
@@ -203,17 +217,23 @@
       return SOCIAL_HOST_BLACKLIST.some(host => d === host || d.endsWith("." + host));
     }
 
-    function isProbablyNoiseLine(line) {
+    function isJunkLine(line) {
       const l = (line || "").trim();
       if (!l) return true;
       if (l.length <= 2) return true;
       if (/^[\-\–\—\•\|\/\\\s]+$/.test(l)) return true;
 
-      // Cookie / legal boilerplate
+      // harte Junk-Starts (Bewertungen/Öffnungszeiten/USt-Id/etc.)
+      if (JUNK_LINE_PATTERNS.some(re => re.test(l))) return true;
+
+      // typische kurze Menu-/Footerzeilen
       for (const re of NOISE_PATTERNS) {
-        if (re.test(l) && l.length < 160) return true;
+        if (re.test(l) && l.length < 180) return true;
       }
+
+      // Cookie accept/decline
       if (/(akzeptieren|zustimmen|ablehnen|einstellungen)/i.test(l) && /cookie/i.test(l)) return true;
+
       return false;
     }
 
@@ -222,6 +242,21 @@
       const found = (text || "").match(re) || [];
       return Array.from(new Set(found.map(e => e.toLowerCase())));
     }
+
+    function isValidDomainCandidate(d) {
+      // block super short junk like "e.k" or one-letter tlds
+      const dom = d.toLowerCase().replace(/^[.]+|[.]+$/g, "");
+      if (dom.length < 6) return false;
+      if (!dom.includes(".")) return false;
+      const parts = dom.split(".");
+      const tld = parts[parts.length - 1];
+      if (tld.length < 2 || tld.length > 24) return false;
+      if (!/^[a-z]{2,24}$/.test(tld)) return false;
+      // block typical legal suffix tokens that show up as "domains"
+      if (dom === "e.k" || dom === "e.k." || dom.endsWith(".ek")) return false;
+      return true;
+    }
+
     function findWebsites(text) {
       const t = text || "";
       const urls = new Set();
@@ -232,14 +267,30 @@
       const re2 = /\bwww\.[^\s<>"')]+\b/gi;
       (t.match(re2) || []).forEach(u => urls.add(u));
 
+      // bare domains (strenger)
       const re3 = /\b(?![A-Z0-9._%+-]+@)([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/gi;
       (t.match(re3) || []).forEach(d => {
         if (/\.(png|jpg|jpeg|gif|svg|pdf|css|js)$/i.test(d)) return;
         if (/(cookie|privacy|datenschutz|impressum)/i.test(d)) return;
+        if (!isValidDomainCandidate(d)) return;
         urls.add(d);
       });
 
-      return Array.from(urls);
+      // dedupe by domain
+      const list = Array.from(urls).map(normalizeWebsite).filter(Boolean);
+      const byDomain = new Map();
+      for (const u of list) {
+        const dom = getDomain(u);
+        if (!dom) continue;
+        // prefer https:// over bare
+        const prev = byDomain.get(dom);
+        if (!prev) byDomain.set(dom, u);
+        else {
+          const score = (x) => (/^https?:\/\//i.test(x) ? 2 : 0) + (/^www\./i.test(x) ? 1 : 0);
+          if (score(u) > score(prev)) byDomain.set(dom, u);
+        }
+      }
+      return Array.from(byDomain.values());
     }
 
     function findZipCity(text) {
@@ -249,7 +300,7 @@
         const zip = m[1];
         let city = (m[2] || "").trim();
         city = city.split("\n")[0].trim();
-        city = city.replace(/\b(Tel|Telefon|Phone|E-Mail|Email|Web|Website|Bewertungen|Route)\b.*$/i, "").trim();
+        city = city.replace(/\b(Tel|Telefon|Phone|E-Mail|Email|Web|Website|Bewertungen|Route|Öffnungszeiten)\b.*$/i, "").trim();
         if (city.length >= 2 && !/\d/.test(city)) return { zip, city };
       }
       return { zip: "", city: "" };
@@ -263,6 +314,8 @@
       for (const line of lines) {
         const l = line.trim();
         if (l.length < 6 || l.length > 140) continue;
+        if (isJunkLine(l)) continue;
+
         if (/,/.test(l) && streetRe.test(l) && houseNoRe.test(l)) {
           return l.split(",")[0].trim().replace(/^\s*(adresse|anschrift)\s*[:\-]\s*/i, "");
         }
@@ -301,6 +354,7 @@
       if (/(straße|str\.|weg|platz|allee|gasse)\b/i.test(l) && /\d/.test(l)) return true;
       return false;
     }
+
     function isContactLike(line) {
       const l = (line || "").trim();
       if (!l) return false;
@@ -310,23 +364,31 @@
       if (/https?:\/\//i.test(l) || /\bwww\./i.test(l)) return true;
       return false;
     }
+
     function looksLikeCompanyName(line) {
       const l = (line || "").trim();
       if (!l) return false;
       if (l.length < 2 || l.length > 140) return false;
+
       if (BLOCK_START_MARKERS.some(re => re.test(l))) return false;
+      if (isJunkLine(l)) return false;
+
+      // keine "Label:"-Zeilen als Name
+      if (/^[A-Za-zÄÖÜäöüß ]{2,25}\s*:\s*/.test(l)) return false;
+
       if (isAddressLike(l)) return false;
       if (isContactLike(l)) return false;
-      if (isProbablyNoiseLine(l)) return false;
-      if (/^(impressum|kontakt|datenschutz|privacy|agb|öffnungszeiten)$/i.test(l)) return false;
+
+      // zu "technisch" oder nur Zahlen
+      if (!/[A-Za-zÄÖÜäöüß]/.test(l)) return false;
+
       return true;
     }
 
-    // ✅ NEUER FIX: echte Segmentierung – zeilenbasiert
+    // Segmentierung (zeilenbasiert)
     function splitIntoBlocks(rawText) {
       const text = normalizeSpaces(rawText);
       if (!text) return [];
-
       const lines = text.split("\n").map(l => l.trim());
 
       const blocks = [];
@@ -350,23 +412,17 @@
         );
       }
 
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-
-        // harte Trenner oder echte Leerzeile -> Block trennen
+      for (const line of lines) {
         if (!line) { pushBlock(); continue; }
         if (HARD_SEPARATOR_LINE.test(line)) { pushBlock(); continue; }
 
-        // Startmarker -> neuer Block (aber Marker selbst bleibt im Block, damit Kontext da ist)
         if (BLOCK_START_MARKERS.some(re => re.test(line))) {
-          // wenn bereits was drin ist: vorher abschließen
           if (cur.length) pushBlock();
           cur.push(line);
           continue;
         }
 
-        // Heuristik: neue Firma beginnt, wenn Zeile wie Firmenname aussieht
-        // UND der aktuelle Block bereits "Core" enthält (Adresse/Telefon/Web/Email etc.)
+        // neue Firma, wenn Name-like und bisheriger Block hat bereits Core-Signale
         if (looksLikeCompanyName(line) && cur.length && blockHasCoreSignals(cur)) {
           pushBlock();
         }
@@ -374,23 +430,19 @@
         cur.push(line);
       }
       pushBlock();
-
-      // Optional: kleine Blocks zusammenfassen? Nein — lieber zu viele Blocks als zu wenige.
       return blocks;
     }
 
+    // Extraction + Qualitäts-Gate
     function extractFromBlock(blockText) {
-      const lines = (blockText || "")
-        .split("\n")
-        .map(l => l.trim())
-        .filter(l => l.length > 0);
+      const lines = (blockText || "").split("\n").map(l => l.trim()).filter(Boolean);
 
       const keptLines = [];
       let imprintHint = false;
 
       for (const line of lines) {
         if (IMPRINT_HINTS.some(re => re.test(line))) imprintHint = true;
-        if (isProbablyNoiseLine(line)) continue;
+        if (isJunkLine(line)) continue;
         keptLines.push(line);
       }
       if (keptLines.length === 0) return null;
@@ -398,56 +450,67 @@
       const keptText = keptLines.join("\n");
 
       const emails = findEmails(keptText);
-      const email = emails[0] || "";
-
-      const websitesRaw = findWebsites(keptText)
-        .map(normalizeWebsite)
-        .filter(Boolean)
-        .filter(u => !isSocialDomain(u));
-
-      let website = "";
-      if (websitesRaw.length) {
-        website = websitesRaw[0];
-      }
-
       const phones = findPhones(keptText);
-      const phone = phones[0] || "";
+      const websites = findWebsites(keptText).filter(u => !isSocialDomain(u));
 
       const { zip, city } = findZipCity(keptText);
       const street = findStreet(keptText);
 
+      // Name finden
       let company_name = "";
       for (const line of keptLines) {
         if (looksLikeCompanyName(line)) { company_name = line; break; }
       }
 
-      // Wenn KEIN Firmenname erkannt, aber es gibt klare Kontaktsignale:
-      // -> trotzdem Datensatz erzeugen (company_name leer), damit du ihn später manuell füllen kannst.
-      const hasAnyCore = Boolean(company_name || phone || email || website || (zip && city) || street);
-      if (!hasAnyCore) return null;
+      const email = emails[0] || "";
+      const phone = phones[0] || "";
+      const website = websites[0] || "";
 
+      // Qualitäts-Score:
+      const hasAddress = Boolean((zip && city) || street);
+      const signalCount =
+        (company_name ? 1 : 0) +
+        (hasAddress ? 1 : 0) +
+        (phone ? 1 : 0) +
+        (email ? 1 : 0) +
+        (website ? 1 : 0);
+
+      // Gate:
+      // - akzeptiere wenn (Address + (Phone/Email/Website)) ODER (Name + (Phone/Email/Website)) ODER (Name + Address)
+      const contactCount = (phone ? 1 : 0) + (email ? 1 : 0) + (website ? 1 : 0);
+
+      const ok =
+        (hasAddress && contactCount >= 1) ||
+        (company_name && contactCount >= 1) ||
+        (company_name && hasAddress);
+
+      // harte Ablehnung: wenn "Name" fehlt und keine Adresse und nur 1 Kontakt-Signal -> Müll
+      if (!ok) return null;
+
+      // Notes
       const notes = [];
       if (imprintHint) notes.push("Impressum gefunden");
       if (!company_name) notes.push("Name unklar");
+      if (!hasAddress) notes.push("Adresse unklar");
       if (!email) notes.push("keine Email");
-      if (!street && !(zip && city)) notes.push("Adresse unklar");
       if (phones.length > 1) notes.push("mehrere Nummern");
       if (emails.length > 1) notes.push("mehrere Emails");
-      if (website && websitesRaw.length > 1) notes.push("mehrere Websites");
+      if (websites.length > 1) notes.push("mehrere Domains");
 
       return {
-        company_name: company_name || "",
+        company_name,
         street: street || "",
         zip: zip || "",
         city: city || "",
-        phone: phone || "",
-        email: email || "",
-        website: website || "",
+        phone,
+        email,
+        website,
         source: SOURCE_CONST,
         notes: clampNotes(notes.join(", "))
       };
     }
 
+    // Dedupe
     function normalizeKeyPart(s) {
       return toLowerSafe((s || ""))
         .replace(/[^a-z0-9äöüß]+/gi, " ")
@@ -455,47 +518,35 @@
         .trim();
     }
     function recordKey(rec) {
-      const name = normalizeKeyPart(rec.company_name);
-      const zc = normalizeKeyPart((rec.zip || "") + " " + (rec.city || ""));
       const dom = normalizeKeyPart(getDomain(rec.website));
       const phone = normalizeKeyPart(rec.phone);
+      const name = normalizeKeyPart(rec.company_name);
+      const zc = normalizeKeyPart((rec.zip||"") + " " + (rec.city||""));
       if (dom) return "d:" + dom;
       if (phone) return "p:" + phone;
       if (name && zc) return "nzc:" + name + "|" + zc;
       if (name) return "n:" + name;
       return "u:" + Math.random().toString(36).slice(2);
     }
-    function mergeRecords(base, incoming) {
-      const out = { ...base };
+    function mergeRecords(a, b) {
+      const out = { ...a };
       for (const k of HEADER) {
         if (k === "notes") continue;
-        if (!out[k] && incoming[k]) out[k] = incoming[k];
+        if (!out[k] && b[k]) out[k] = b[k];
       }
       const notes = new Set();
-      [base.notes, incoming.notes].forEach(n => {
-        (n || "").split(",").map(x => x.trim()).filter(Boolean).forEach(x => notes.add(x));
-      });
+      [a.notes, b.notes].forEach(n => (n||"").split(",").map(x=>x.trim()).filter(Boolean).forEach(x=>notes.add(x)));
       notes.add("merged");
       out.notes = clampNotes(Array.from(notes).join(", "));
       return out;
     }
     function dedupe(records) {
       const map = new Map();
-      const kept = [];
       for (const r of records) {
         const key = recordKey(r);
-        if (!map.has(key)) {
-          map.set(key, r);
-          kept.push(r);
-        } else {
-          const merged = mergeRecords(map.get(key), r);
-          map.set(key, merged);
-          const idx = kept.indexOf(map.get(key));
-          if (idx >= 0) kept[idx] = merged;
-        }
+        if (!map.has(key)) map.set(key, r);
+        else map.set(key, mergeRecords(map.get(key), r));
       }
-      // Fix for kept list update (above line was wrong with map.get(key) after set)
-      // We'll rebuild array from map:
       return Array.from(map.values());
     }
 
@@ -522,6 +573,7 @@
       return { blocksCount: blocks.length, extractedCount: extracted.length, dedupedCount: deduped.length, skippedCount: skipped, records: deduped };
     }
 
+    // CSV helpers (UTF-8 BOM für Excel)
     function csvEscape(val) {
       const s = (val ?? "").toString();
       if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
@@ -545,7 +597,9 @@
       return lines.join("\n");
     }
     function downloadText(filename, content) {
-      const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+      // UTF-8 BOM vorne dran -> Excel (auch iOS) erkennt Umlaute
+      const withBom = "\uFEFF" + content;
+      const blob = new Blob([withBom], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -579,7 +633,7 @@
       return ok;
     }
 
-    // --- UI ---
+    // UI wiring
     const inputEl = document.getElementById("input");
     const maxRowsEl = document.getElementById("maxRows");
     const zipModeEl = document.getElementById("zipMode");
@@ -593,7 +647,6 @@
     const tbodyRows = document.getElementById("tbodyRows");
     const errBox = document.getElementById("errBox");
     const errMsg = document.getElementById("errMsg");
-
     let lastResult = null;
 
     function showError(e) {
@@ -610,7 +663,7 @@
         { label: "Blöcke erkannt", value: res.blocksCount },
         { label: "Extrahiert (vor Dedupe)", value: res.extractedCount },
         { label: "Nach Dedupe/Merge", value: res.dedupedCount },
-        { label: "Übersprungen (nur Müll/unklar)", value: res.skippedCount },
+        { label: "Übersprungen (Müll/zu wenig Signale)", value: res.skippedCount },
       ];
       statsEl.innerHTML = cards.map(c => `
         <div class="stat">
@@ -622,7 +675,7 @@
 
     function renderTable(records) {
       theadRow.innerHTML = HEADER.map(h => `<th>${h}</th>`).join("");
-      const previewN = Math.min(50, records.length);
+      const previewN = Math.min(80, records.length);
       const zipMode = zipModeEl.value;
       tbodyRows.innerHTML = "";
 
@@ -643,8 +696,8 @@
         ? `<span class="pill">PLZ: Excel-safe</span>`
         : `<span class="pill">PLZ: Plain</span>`;
       hintEl.innerHTML = recordsCount
-        ? `<span class="ok">OK</span> – ${recordsCount} Datensätze. ${zipMode} <span class="small">Preview max. 50 Zeilen.</span>`
-        : `<span class="warn">Keine Datensätze.</span> <span class="small">Tipp: Kopierte Firmen müssen nicht doppelt getrennt sein – Parser erkennt Startmarker.</span>`;
+        ? `<span class="ok">OK</span> – ${recordsCount} Datensätze. ${zipMode} <span class="small">Preview max. 80 Zeilen.</span>`
+        : `<span class="warn">Keine Datensätze.</span> <span class="small">Parser ist jetzt strenger – Müll wird bewusst verworfen.</span>`;
     }
 
     analyzeBtn.addEventListener("click", () => {
