@@ -1,16 +1,3 @@
-<!--
-Schubert CRM – Lead Extractor (Offline, iPhone/Windows)
-Single-file app: index.html
-- Paste Rohtext
-- Tool extrahiert Firmenkontakte (konservativ), filtert Müll, dedupliziert
-- Export: leads1.csv, leads2.csv, ...
-- Läuft lokal in Safari (iPhone) oder jedem Desktop-Browser (Windows)
-
-Fixes:
-- Tabellarische Preview
-- Excel-safe ZIP Export (führende 0 bleibt)
-- Bessere Company-Name-Erkennung (Google Maps/Apple Maps etc. werden ignoriert)
--->
 <!doctype html>
 <html lang="de">
 <head>
@@ -40,17 +27,8 @@ Fixes:
     .errBox { display:none; margin-top:10px; border:1px solid #c006; border-radius:12px; padding:10px; background: color-mix(in srgb, Canvas 92%, transparent); }
     .errBox b { color:#c00; }
 
-    /* Table preview */
-    .tableWrap {
-      border: 1px solid #8886;
-      border-radius: 12px;
-      overflow: hidden;
-      background: color-mix(in srgb, Canvas 92%, transparent);
-    }
-    .tableScroll {
-      max-height: 320px;
-      overflow: auto;
-    }
+    .tableWrap { border: 1px solid #8886; border-radius: 12px; overflow: hidden; background: color-mix(in srgb, Canvas 92%, transparent); }
+    .tableScroll { max-height: 320px; overflow: auto; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
     thead th {
       position: sticky; top: 0;
@@ -77,7 +55,6 @@ Fixes:
       font-size: 12px; opacity: 0.9;
       background: color-mix(in srgb, Canvas 94%, transparent);
     }
-
     .right { margin-left: auto; }
   </style>
 </head>
@@ -113,7 +90,6 @@ Fixes:
 
   <div id="errBox" class="errBox">
     <div class="small"><b>Fehler:</b> <span id="errMsg" class="mono"></span></div>
-    <div class="small">Tipp: Auf iPhone sieht man JS-Errors sonst oft nicht – hier schon.</div>
   </div>
 
   <div class="stats" id="stats"></div>
@@ -123,10 +99,8 @@ Fixes:
       <div class="small"><b>Preview:</b> <span id="hint" class="small"></span></div>
       <div class="tableWrap" style="margin-top:8px;">
         <div class="tableScroll">
-          <table id="previewTable" aria-label="CSV Preview Table">
-            <thead>
-              <tr id="theadRow"></tr>
-            </thead>
+          <table id="previewTable">
+            <thead><tr id="theadRow"></tr></thead>
             <tbody id="tbodyRows"></tbody>
           </table>
         </div>
@@ -137,42 +111,31 @@ Fixes:
   <script>
     "use strict";
 
-    // --- Configuration ---
     const SOURCE_CONST = "manual_copy";
     const DEFAULT_NOTES_LIMIT = 120;
-
     const HEADER = ["company_name","street","zip","city","phone","email","website","source","notes"];
 
-    // Social domains should NOT become website
     const SOCIAL_HOST_BLACKLIST = [
       "facebook.com", "fb.com", "instagram.com", "linkedin.com", "tiktok.com",
       "youtube.com", "youtu.be", "xing.com", "twitter.com", "x.com", "pinterest.com"
     ];
 
-    // Headings / source markers that should never become company names
-    const COMPANY_HEADING_BLACKLIST = [
+    // Start-/Blockmarker (sehr wichtig für Segmentierung)
+    const BLOCK_START_MARKERS = [
       /^google\s*maps$/i,
       /^apple\s*maps$/i,
-      /^maps$/i,
-      /^route$/i,
-      /^speichern$/i,
-      /^teilen$/i,
-      /^in\s+der\s+nähe$/i,
-      /^bewertungen?:/i,
-      /^öffnungszeiten?:/i,
-      /^kontakt$/i,
       /^impressum$/i,
-      /^datenschutz$/i,
-      /^privacy$/i,
-      /^agb$/i
+      /^kontakt$/i,
+      /^contact$/i,
+      /^anschrift\b/i,
+      /^adresse\b/i
     ];
 
-    // Strong noise patterns
+    // harte Trenner
+    const HARD_SEPARATOR_LINE = /^(\-{3,}|={3,}|\*{3,}|•{3,}|_{3,})$/;
+
     const NOISE_PATTERNS = [
-      /cookie(s)?/i,
-      /consent/i,
-      /datenschutz/i,
-      /privacy/i,
+      /cookie(s)?/i, /consent/i, /datenschutz/i, /privacy/i,
       /\b(alle\s*rechte\s*vorbehalten|copyright|©)\b/i,
       /\b(navigation|menu|menü)\b/i,
       /\b(home|startseite|kontakt|leistungen|über uns|karriere|jobs|blog|news|shop|warenkorb)\b/i,
@@ -181,36 +144,16 @@ Fixes:
       /\b(javascript|css|html)\b/i,
       /\b(accept|ablehnen|zustimmen|weiter)\b/i,
       /newsletter/i,
-      /haftung/i,
-      /urheber/i,
-      /verantwortlich/i,
-      /redaktionell/i,
-      /speichern/i,
-      /in der nähe/i,
-      /bewertungen/i,
+      /haftung/i, /urheber/i, /verantwortlich/i, /redaktionell/i
     ];
 
-    // Imprint hints
     const IMPRINT_HINTS = [
-      /\bust-?id\b/i,
-      /\bustid\b/i,
-      /\bumsatzsteuer\b/i,
-      /\bregistergericht\b/i,
-      /\bhandelsregister\b/i,
-      /\bhrb\b/i,
-      /\bhra\b/i,
-      /\bvertretungsberechtigt\b/i,
-      /\bgeschäftsführer\b/i,
-      /\binhaber\b/i,
+      /\bust-?id\b/i, /\bustid\b/i, /\bumsatzsteuer\b/i,
+      /\bregistergericht\b/i, /\bhandelsregister\b/i,
+      /\bhrb\b/i, /\bhra\b/i, /\bvertretungsberechtigt\b/i,
+      /\bgeschäftsführer\b/i, /\binhaber\b/i
     ];
 
-    const HARD_SEPARATORS = [
-      /^---+$/m,
-      /^===+$/m,
-      /^\*\*\*+$/m,
-    ];
-
-    // --- Helpers ---
     function normalizeSpaces(s) {
       return (s || "")
         .replace(/\u00A0/g, " ")
@@ -219,40 +162,12 @@ Fixes:
         .replace(/\n{3,}/g, "\n\n")
         .trim();
     }
-
     function toLowerSafe(s) { return (s || "").toLowerCase(); }
-
     function clampNotes(s) {
       const t = (s || "").trim();
       if (t.length <= DEFAULT_NOTES_LIMIT) return t;
       return t.slice(0, DEFAULT_NOTES_LIMIT - 1).trim() + "…";
     }
-
-    function isProbablyNoiseLine(line) {
-      const l = (line || "").trim();
-      if (!l) return true;
-      if (l.length <= 2) return true;
-      if (/^[\-\–\—\•\|\/\\\s]+$/.test(l)) return true;
-
-      // Explicit headings are noise lines too
-      if (COMPANY_HEADING_BLACKLIST.some(re => re.test(l))) return true;
-
-      // Short nav-like lines
-      if (l.length <= 35) {
-        const navish = /\b(home|kontakt|impressum|datenschutz|agb|leistungen|news|blog|speichern|teilen|route)\b/i;
-        if (navish.test(l) && !/@/.test(l) && !/\d{5}/.test(l) && !/(tel|telefon|\+49)/i.test(l)) return true;
-      }
-
-      // Cookie/privacy/legal boilerplate
-      for (const re of NOISE_PATTERNS) {
-        if (re.test(l) && l.length < 140) return true;
-      }
-
-      if (/(akzeptieren|zustimmen|ablehnen|einstellungen)/i.test(l) && /cookie/i.test(l)) return true;
-
-      return false;
-    }
-
     function stripLabels(s) {
       return (s || "")
         .replace(/^\s*(tel\.?|telefon|phone|mobil|fax)\s*[:\-]\s*/i, "")
@@ -260,7 +175,6 @@ Fixes:
         .replace(/^\s*(web(site)?|internet|url)\s*[:\-]\s*/i, "")
         .trim();
     }
-
     function normalizePhone(raw) {
       if (!raw) return "";
       let s = stripLabels(raw);
@@ -268,7 +182,6 @@ Fixes:
       s = s.replace(/[ ]{2,}/g, " ").trim();
       return s;
     }
-
     function normalizeWebsite(raw) {
       if (!raw) return "";
       let s = stripLabels(raw).trim();
@@ -276,7 +189,6 @@ Fixes:
       s = s.replace(/(\?.*)$/, "");
       return s;
     }
-
     function getDomain(url) {
       if (!url) return "";
       let u = url.trim();
@@ -285,20 +197,31 @@ Fixes:
       u = u.split("/")[0];
       return u.toLowerCase();
     }
-
     function isSocialDomain(url) {
       const d = getDomain(url);
       if (!d) return false;
       return SOCIAL_HOST_BLACKLIST.some(host => d === host || d.endsWith("." + host));
     }
 
-    function findEmails(text) {
-      const t = text || "";
-      const re = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
-      const found = t.match(re) || [];
-      return Array.from(new Set(found.map(e => e.toLowerCase())));
+    function isProbablyNoiseLine(line) {
+      const l = (line || "").trim();
+      if (!l) return true;
+      if (l.length <= 2) return true;
+      if (/^[\-\–\—\•\|\/\\\s]+$/.test(l)) return true;
+
+      // Cookie / legal boilerplate
+      for (const re of NOISE_PATTERNS) {
+        if (re.test(l) && l.length < 160) return true;
+      }
+      if (/(akzeptieren|zustimmen|ablehnen|einstellungen)/i.test(l) && /cookie/i.test(l)) return true;
+      return false;
     }
 
+    function findEmails(text) {
+      const re = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
+      const found = (text || "").match(re) || [];
+      return Array.from(new Set(found.map(e => e.toLowerCase())));
+    }
     function findWebsites(text) {
       const t = text || "";
       const urls = new Set();
@@ -309,7 +232,6 @@ Fixes:
       const re2 = /\bwww\.[^\s<>"')]+\b/gi;
       (t.match(re2) || []).forEach(u => urls.add(u));
 
-      // bare domains
       const re3 = /\b(?![A-Z0-9._%+-]+@)([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/gi;
       (t.match(re3) || []).forEach(d => {
         if (/\.(png|jpg|jpeg|gif|svg|pdf|css|js)$/i.test(d)) return;
@@ -321,44 +243,33 @@ Fixes:
     }
 
     function findZipCity(text) {
-      // Accept "Heinrichstraße 12, 01097 Dresden" and plain "01097 Dresden"
       const re = /\b(\d{5})\s+([A-Za-zÀ-ÖØ-öø-ÿÄÖÜäöüß\.\- ]{2,})\b/g;
-      const candidates = [];
       let m;
       while ((m = re.exec(text)) !== null) {
         const zip = m[1];
         let city = (m[2] || "").trim();
         city = city.split("\n")[0].trim();
         city = city.replace(/\b(Tel|Telefon|Phone|E-Mail|Email|Web|Website|Bewertungen|Route)\b.*$/i, "").trim();
-        if (city.length < 2) continue;
-        if (/\d/.test(city)) continue;
-        candidates.push({ zip, city });
+        if (city.length >= 2 && !/\d/.test(city)) return { zip, city };
       }
-      return candidates[0] || { zip: "", city: "" };
+      return { zip: "", city: "" };
     }
 
     function findStreet(text) {
       const lines = (text || "").split(/\n/).map(l => l.trim()).filter(Boolean);
-
       const streetRe = /\b(straße|str\.|weg|platz|allee|gasse|ring|damm|ufer|promenade|chaussee|berg|hof|plan|markt)\b/i;
       const houseNoRe = /\b\d+[a-zA-Z]?\b/;
 
       for (const line of lines) {
         const l = line.trim();
-        if (l.length < 6 || l.length > 110) continue;
-
-        // handle "Street 12, 01097 Dresden" => return "Street 12"
+        if (l.length < 6 || l.length > 140) continue;
         if (/,/.test(l) && streetRe.test(l) && houseNoRe.test(l)) {
-          const first = l.split(",")[0].trim();
-          if (first.length >= 6) return first.replace(/^\s*(adresse|anschrift)\s*[:\-]\s*/i, "").trim();
+          return l.split(",")[0].trim().replace(/^\s*(adresse|anschrift)\s*[:\-]\s*/i, "");
         }
-
-        if (!streetRe.test(l)) continue;
-        if (!houseNoRe.test(l)) continue;
-        if (/(register|ust|gericht|hrb|hra|steuer)/i.test(l)) continue;
-        return l.replace(/^\s*(adresse|anschrift)\s*[:\-]\s*/i, "").trim();
+        if (streetRe.test(l) && houseNoRe.test(l) && !/(register|ust|gericht|hrb|hra|steuer)/i.test(l)) {
+          return l.replace(/^\s*(adresse|anschrift)\s*[:\-]\s*/i, "").trim();
+        }
       }
-
       return "";
     }
 
@@ -390,7 +301,6 @@ Fixes:
       if (/(straße|str\.|weg|platz|allee|gasse)\b/i.test(l) && /\d/.test(l)) return true;
       return false;
     }
-
     function isContactLike(line) {
       const l = (line || "").trim();
       if (!l) return false;
@@ -400,40 +310,75 @@ Fixes:
       if (/https?:\/\//i.test(l) || /\bwww\./i.test(l)) return true;
       return false;
     }
-
     function looksLikeCompanyName(line) {
       const l = (line || "").trim();
       if (!l) return false;
-      if (l.length < 2 || l.length > 110) return false;
-      if (COMPANY_HEADING_BLACKLIST.some(re => re.test(l))) return false;
+      if (l.length < 2 || l.length > 140) return false;
+      if (BLOCK_START_MARKERS.some(re => re.test(l))) return false;
       if (isAddressLike(l)) return false;
       if (isContactLike(l)) return false;
       if (isProbablyNoiseLine(l)) return false;
-      if (/^(impressum|kontakt|datenschutz|privacy|agb|anfrage|standort|öffnungszeiten)$/i.test(l)) return false;
-      if (/^[\W_]+$/.test(l)) return false;
+      if (/^(impressum|kontakt|datenschutz|privacy|agb|öffnungszeiten)$/i.test(l)) return false;
       return true;
     }
 
-    // --- Segmentierung ---
+    // ✅ NEUER FIX: echte Segmentierung – zeilenbasiert
     function splitIntoBlocks(rawText) {
       const text = normalizeSpaces(rawText);
-      let t = text;
-      HARD_SEPARATORS.forEach(re => { t = t.replace(re, "\n\n---\n\n"); });
-      const roughBlocks = t.split(/\n{2,}/).map(b => b.trim()).filter(Boolean);
+      if (!text) return [];
+
+      const lines = text.split("\n").map(l => l.trim());
 
       const blocks = [];
-      for (const b of roughBlocks) {
-        if (b.length > 4000) {
-          const parts = b.split(/\n(?=(Kontakt|Impressum|Anschrift|Adresse)\b[: ]?)/i)
-            .map(p => p.trim()).filter(Boolean);
-          if (parts.length > 1) blocks.push(...parts);
-          else blocks.push(b);
-        } else blocks.push(b);
+      let cur = [];
+
+      function pushBlock() {
+        const b = cur.join("\n").trim();
+        if (b) blocks.push(b);
+        cur = [];
       }
+
+      function blockHasCoreSignals(blockLines) {
+        const t = blockLines.join("\n");
+        return (
+          /\b\d{5}\b/.test(t) ||
+          /@/.test(t) ||
+          /(tel|telefon|phone|mobil|fax)\b/i.test(t) ||
+          /\+49|(^|\s)0\d{2,}/.test(t) ||
+          /https?:\/\//i.test(t) ||
+          /\bwww\./i.test(t)
+        );
+      }
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+
+        // harte Trenner oder echte Leerzeile -> Block trennen
+        if (!line) { pushBlock(); continue; }
+        if (HARD_SEPARATOR_LINE.test(line)) { pushBlock(); continue; }
+
+        // Startmarker -> neuer Block (aber Marker selbst bleibt im Block, damit Kontext da ist)
+        if (BLOCK_START_MARKERS.some(re => re.test(line))) {
+          // wenn bereits was drin ist: vorher abschließen
+          if (cur.length) pushBlock();
+          cur.push(line);
+          continue;
+        }
+
+        // Heuristik: neue Firma beginnt, wenn Zeile wie Firmenname aussieht
+        // UND der aktuelle Block bereits "Core" enthält (Adresse/Telefon/Web/Email etc.)
+        if (looksLikeCompanyName(line) && cur.length && blockHasCoreSignals(cur)) {
+          pushBlock();
+        }
+
+        cur.push(line);
+      }
+      pushBlock();
+
+      // Optional: kleine Blocks zusammenfassen? Nein — lieber zu viele Blocks als zu wenige.
       return blocks;
     }
 
-    // --- Extraction per block ---
     function extractFromBlock(blockText) {
       const lines = (blockText || "")
         .split("\n")
@@ -462,51 +407,31 @@ Fixes:
 
       let website = "";
       if (websitesRaw.length) {
-        const scored = websitesRaw.map(u => {
-          let score = 0;
-          if (/^https?:\/\//i.test(u)) score += 3;
-          if (/^www\./i.test(u)) score += 2;
-          if (!/[\/]/.test(u.replace(/^https?:\/\//i, ""))) score += 2;
-          if (/\.(de|com|net|org|eu)$/i.test(getDomain(u))) score += 1;
-          return { u, score };
-        }).sort((a,b) => b.score - a.score);
-        website = scored[0].u;
+        website = websitesRaw[0];
       }
 
       const phones = findPhones(keptText);
       const phone = phones[0] || "";
-      const multiplePhones = phones.length > 1;
 
       const { zip, city } = findZipCity(keptText);
       const street = findStreet(keptText);
 
-      // company_name: first good candidate
       let company_name = "";
       for (const line of keptLines) {
         if (looksLikeCompanyName(line)) { company_name = line; break; }
       }
 
-      // fallback: try next best line if first ones are headings
-      if (!company_name) {
-        const maybe = keptLines.find(l =>
-          l.length <= 110 &&
-          !isAddressLike(l) &&
-          !isContactLike(l) &&
-          !COMPANY_HEADING_BLACKLIST.some(re => re.test(l)) &&
-          !/^(kontakt|impressum|datenschutz)$/i.test(l)
-        );
-        if (maybe && looksLikeCompanyName(maybe)) company_name = maybe;
-      }
-
+      // Wenn KEIN Firmenname erkannt, aber es gibt klare Kontaktsignale:
+      // -> trotzdem Datensatz erzeugen (company_name leer), damit du ihn später manuell füllen kannst.
       const hasAnyCore = Boolean(company_name || phone || email || website || (zip && city) || street);
       if (!hasAnyCore) return null;
 
       const notes = [];
       if (imprintHint) notes.push("Impressum gefunden");
+      if (!company_name) notes.push("Name unklar");
       if (!email) notes.push("keine Email");
-      if (!phone && (email || website)) notes.push("nur Email/Website");
       if (!street && !(zip && city)) notes.push("Adresse unklar");
-      if (multiplePhones) notes.push("mehrere Nummern");
+      if (phones.length > 1) notes.push("mehrere Nummern");
       if (emails.length > 1) notes.push("mehrere Emails");
       if (website && websitesRaw.length > 1) notes.push("mehrere Websites");
 
@@ -519,32 +444,27 @@ Fixes:
         email: email || "",
         website: website || "",
         source: SOURCE_CONST,
-        notes: clampNotes(notes.filter(Boolean).join(", "))
+        notes: clampNotes(notes.join(", "))
       };
     }
 
-    // --- Dedupe ---
     function normalizeKeyPart(s) {
-      // keep iPhone/Safari compatibility
       return toLowerSafe((s || ""))
         .replace(/[^a-z0-9äöüß]+/gi, " ")
         .replace(/\s+/g, " ")
         .trim();
     }
-
     function recordKey(rec) {
       const name = normalizeKeyPart(rec.company_name);
       const zc = normalizeKeyPart((rec.zip || "") + " " + (rec.city || ""));
       const dom = normalizeKeyPart(getDomain(rec.website));
       const phone = normalizeKeyPart(rec.phone);
-
       if (dom) return "d:" + dom;
       if (phone) return "p:" + phone;
       if (name && zc) return "nzc:" + name + "|" + zc;
       if (name) return "n:" + name;
-      return "unknown:" + Math.random().toString(36).slice(2);
+      return "u:" + Math.random().toString(36).slice(2);
     }
-
     function mergeRecords(base, incoming) {
       const out = { ...base };
       for (const k of HEADER) {
@@ -559,7 +479,6 @@ Fixes:
       out.notes = clampNotes(Array.from(notes).join(", "));
       return out;
     }
-
     function dedupe(records) {
       const map = new Map();
       const kept = [];
@@ -569,14 +488,15 @@ Fixes:
           map.set(key, r);
           kept.push(r);
         } else {
-          const existing = map.get(key);
-          const merged = mergeRecords(existing, r);
+          const merged = mergeRecords(map.get(key), r);
           map.set(key, merged);
-          const idx = kept.indexOf(existing);
+          const idx = kept.indexOf(map.get(key));
           if (idx >= 0) kept[idx] = merged;
         }
       }
-      return kept;
+      // Fix for kept list update (above line was wrong with map.get(key) after set)
+      // We'll rebuild array from map:
+      return Array.from(map.values());
     }
 
     function completenessScore(r) {
@@ -589,35 +509,30 @@ Fixes:
       const blocks = splitIntoBlocks(rawText);
       const extracted = [];
       let skipped = 0;
+
       for (const b of blocks) {
         const rec = extractFromBlock(b);
         if (rec) extracted.push(rec);
         else skipped++;
       }
+
       const deduped = dedupe(extracted);
       deduped.sort((a,b) => completenessScore(b) - completenessScore(a));
+
       return { blocksCount: blocks.length, extractedCount: extracted.length, dedupedCount: deduped.length, skippedCount: skipped, records: deduped };
     }
 
-    // --- CSV export ---
     function csvEscape(val) {
       const s = (val ?? "").toString();
       if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
       return s;
     }
-
     function formatZipForCSV(zip, mode) {
       const z = (zip || "").trim();
       if (!z) return "";
-      if (mode === "excel_text") {
-        // Excel-safe: leading zeros preserved
-        // Using leading apostrophe: Excel shows 01097 but stores as text.
-        // Other importers can strip the apostrophe if they want.
-        return "'" + z;
-      }
+      if (mode === "excel_text") return "'" + z;
       return z;
     }
-
     function recordsToCSV(records, zipMode) {
       const lines = [HEADER.join(",")];
       for (const r of records) {
@@ -629,7 +544,6 @@ Fixes:
       }
       return lines.join("\n");
     }
-
     function downloadText(filename, content) {
       const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(blob);
@@ -641,7 +555,6 @@ Fixes:
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
-
     function exportBatches(records, maxRowsPerFile, zipMode) {
       const maxRows = Math.max(1, parseInt(maxRowsPerFile, 10) || 500);
       let fileNo = 1;
@@ -652,13 +565,11 @@ Fixes:
         fileNo++;
       }
     }
-
     async function copyToClipboard(text) {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(text);
         return true;
       }
-      // fallback
       const ta = document.createElement("textarea");
       ta.value = text;
       document.body.appendChild(ta);
@@ -668,7 +579,7 @@ Fixes:
       return ok;
     }
 
-    // --- UI wiring ---
+    // --- UI ---
     const inputEl = document.getElementById("input");
     const maxRowsEl = document.getElementById("maxRows");
     const zipModeEl = document.getElementById("zipMode");
@@ -678,10 +589,8 @@ Fixes:
     const clearBtn = document.getElementById("clearBtn");
     const statsEl = document.getElementById("stats");
     const hintEl = document.getElementById("hint");
-
     const theadRow = document.getElementById("theadRow");
     const tbodyRows = document.getElementById("tbodyRows");
-
     const errBox = document.getElementById("errBox");
     const errMsg = document.getElementById("errMsg");
 
@@ -712,20 +621,18 @@ Fixes:
     }
 
     function renderTable(records) {
-      // header
       theadRow.innerHTML = HEADER.map(h => `<th>${h}</th>`).join("");
-
-      // rows (limit preview)
       const previewN = Math.min(50, records.length);
       const zipMode = zipModeEl.value;
-
       tbodyRows.innerHTML = "";
+
       for (let i = 0; i < previewN; i++) {
         const r = records[i];
         const cells = HEADER.map(h => {
           let v = r[h] || "";
-          if (h === "zip") v = formatZipForCSV(v, zipMode); // preview shows what export does
-          return `<td title="${String(v).replace(/"/g,'&quot;')}">${String(v)}</td>`;
+          if (h === "zip") v = formatZipForCSV(v, zipMode);
+          const title = String(v).replace(/"/g,'&quot;');
+          return `<td title="${title}">${String(v)}</td>`;
         }).join("");
         tbodyRows.innerHTML += `<tr>${cells}</tr>`;
       }
@@ -735,10 +642,9 @@ Fixes:
       const zipMode = zipModeEl.value === "excel_text"
         ? `<span class="pill">PLZ: Excel-safe</span>`
         : `<span class="pill">PLZ: Plain</span>`;
-
       hintEl.innerHTML = recordsCount
-        ? `<span class="ok">OK</span> – ${recordsCount} Datensätze. ${zipMode} <span class="small">Preview zeigt max. 50 Zeilen.</span>`
-        : `<span class="warn">Keine verwertbaren Firmen gefunden.</span> <span class="small">Tipp: Firmen mit Leerzeilen oder '---' trennen.</span>`;
+        ? `<span class="ok">OK</span> – ${recordsCount} Datensätze. ${zipMode} <span class="small">Preview max. 50 Zeilen.</span>`
+        : `<span class="warn">Keine Datensätze.</span> <span class="small">Tipp: Kopierte Firmen müssen nicht doppelt getrennt sein – Parser erkennt Startmarker.</span>`;
     }
 
     analyzeBtn.addEventListener("click", () => {
@@ -750,9 +656,7 @@ Fixes:
         updateHint(lastResult.records.length);
         exportBtn.disabled = !(lastResult.records && lastResult.records.length);
         copyBtn.disabled = !(lastResult.records && lastResult.records.length);
-      } catch (e) {
-        showError(e);
-      }
+      } catch (e) { showError(e); }
     });
 
     exportBtn.addEventListener("click", () => {
@@ -760,9 +664,7 @@ Fixes:
         clearError();
         if (!lastResult || !lastResult.records || !lastResult.records.length) return;
         exportBatches(lastResult.records, maxRowsEl.value, zipModeEl.value);
-      } catch (e) {
-        showError(e);
-      }
+      } catch (e) { showError(e); }
     });
 
     copyBtn.addEventListener("click", async () => {
@@ -771,12 +673,8 @@ Fixes:
         if (!lastResult || !lastResult.records || !lastResult.records.length) return;
         const csv = recordsToCSV(lastResult.records, zipModeEl.value);
         const ok = await copyToClipboard(csv);
-        hintEl.innerHTML = ok
-          ? `<span class="ok">CSV kopiert.</span> <span class="small">Du kannst es direkt in Sheets/Excel einfügen.</span>`
-          : `<span class="warn">Kopieren nicht möglich.</span> <span class="small">Nutze Export.</span>`;
-      } catch (e) {
-        showError(e);
-      }
+        hintEl.innerHTML = ok ? `<span class="ok">CSV kopiert.</span>` : `<span class="warn">Kopieren nicht möglich – nutze Export.</span>`;
+      } catch (e) { showError(e); }
     });
 
     clearBtn.addEventListener("click", () => {
@@ -791,7 +689,6 @@ Fixes:
       lastResult = null;
     });
 
-    // If user changes zip mode after analysis, refresh preview so they see the effect
     zipModeEl.addEventListener("change", () => {
       if (!lastResult) return;
       renderTable(lastResult.records);
