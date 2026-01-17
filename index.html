@@ -1,5 +1,4 @@
-<meta name='viewport'
-content='width=device-width, initial-scale=1'/><!--
+<!--
 Schubert CRM – Lead Extractor (Offline, iPhone/Windows)
 Single-file app: index.html
 - Paste Rohtext
@@ -22,20 +21,23 @@ Single-file app: index.html
     input[type="number"] { width: 120px; padding: 8px; border-radius: 10px; border: 1px solid #8886; }
     button { padding: 10px 12px; border-radius: 10px; border: 1px solid #8886; cursor: pointer; }
     button:active { transform: translateY(1px); }
-    .small { font-size: 12px; opacity: 0.8; }
+    .small { font-size: 12px; opacity: 0.85; }
     .panel { border: 1px solid #8886; border-radius: 12px; padding: 10px; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; margin-top: 10px; }
     .stat { padding: 8px 10px; border-radius: 10px; border: 1px solid #8886; }
     pre { white-space: pre-wrap; word-break: break-word; }
     .warn { color: #c00; }
+    .ok { color: #0a7; }
+    .errBox { display:none; margin-top:10px; border:1px solid #c006; border-radius:12px; padding:10px; }
+    .errBox b { color:#c00; }
   </style>
 </head>
 <body>
   <h1>Lead Extractor (Offline) – Rohtext → leads1.csv, leads2.csv, ...</h1>
 
   <div class="row small">
-    <div class="panel">
+    <div class="panel" style="width:100%">
       <div><b>CSV Spalten:</b> <span class="mono">company_name,street,zip,city,phone,email,website,source,notes</span></div>
       <div class="small">Konservativ: Wenn unklar → Feld leer. Kein Raten. Keine Webrequests.</div>
     </div>
@@ -52,6 +54,11 @@ Single-file app: index.html
     <button id="clearBtn">Leeren</button>
   </div>
 
+  <div id="errBox" class="errBox">
+    <div class="small"><b>Fehler:</b> <span id="errMsg" class="mono"></span></div>
+    <div class="small">Tipp: Wenn du auf iPhone testest, siehst du Errors sonst oft nicht. Dieses Feld zeigt sie dir.</div>
+  </div>
+
   <div class="stats" id="stats"></div>
 
   <div class="row">
@@ -63,16 +70,7 @@ Single-file app: index.html
   </div>
 
   <script>
-    /**
-     * Lead Extractor – heuristisch, konservativ
-     * Wichtige Ziele:
-     * - Müll/Noise ignorieren
-     * - Segmentierung in Firmen-Blöcke
-     * - Extraktion: company_name, street, zip, city, phone, email, website
-     * - Normalisierung
-     * - Dedupe + Merge
-     * - Export: leads1.csv, leads2.csv, ...
-     */
+    "use strict";
 
     // --- Configuration ---
     const SOURCE_CONST = "manual_copy";
@@ -90,12 +88,12 @@ Single-file app: index.html
       /consent/i,
       /datenschutz/i,
       /privacy/i,
-      /impressum\s*$/i,            // lone "Impressum" line is usually navigation
+      /impressum\s*$/i,
       /\b(agb|terms)\b/i,
       /\b(alle\s*rechte\s*vorbehalten|copyright|©)\b/i,
       /\b(navigation|menu|menü)\b/i,
       /\b(home|startseite|kontakt|leistungen|über uns|karriere|jobs|blog|news|shop|warenkorb)\b/i,
-      /\b(öffnungszeiten)\b/i,     // not always noise, but usually not needed
+      /\b(öffnungszeiten)\b/i,
       /\b(standort(e)?|route|anfahrt)\b/i,
       /\b(google\s*analytics|matomo|tracking)\b/i,
       /\b(javascript|css|html)\b/i,
@@ -150,30 +148,24 @@ Single-file app: index.html
       const l = (line || "").trim();
       if (!l) return true;
 
-      // Very short single menu items
       if (l.length <= 3) return true;
-      // pure separators / bullets
-      if (/^[\-\–\--\•\|\/\\\s]+$/.test(l)) return true;
+      if (/^[\-\–\—\•\|\/\\\s]+$/.test(l)) return true;
 
-      // Many sites have repeated nav keywords - treat as noise if line is only a couple of words
       if (l.length <= 30) {
         const navish = /\b(home|kontakt|impressum|datenschutz|agb|leistungen|news|blog)\b/i;
         if (navish.test(l) && !/@/.test(l) && !/\d{5}/.test(l) && !/(tel|telefon|\+49)/i.test(l)) return true;
       }
 
-      // Cookie / privacy / legal boilerplate
       for (const re of NOISE_PATTERNS) {
         if (re.test(l) && l.length < 120) return true;
       }
 
-      // If line is basically a cookie accept text
       if (/(akzeptieren|zustimmen|ablehnen|einstellungen)/i.test(l) && /cookie/i.test(l)) return true;
 
       return false;
     }
 
     function stripLabels(s) {
-      // remove leading labels like "Tel:", "Telefon:", "E-Mail:"
       return (s || "")
         .replace(/^\s*(tel\.?|telefon|phone|mobil|fax)\s*[:\-]\s*/i, "")
         .replace(/^\s*(e-?mail)\s*[:\-]\s*/i, "")
@@ -184,9 +176,7 @@ Single-file app: index.html
     function normalizePhone(raw) {
       if (!raw) return "";
       let s = stripLabels(raw);
-      // Keep only digits, space, +, /, -
       s = s.replace(/[^\d +\/\-]/g, "");
-      // normalize spacing a bit
       s = s.replace(/[ ]{2,}/g, " ").trim();
       return s;
     }
@@ -194,10 +184,7 @@ Single-file app: index.html
     function normalizeWebsite(raw) {
       if (!raw) return "";
       let s = stripLabels(raw).trim();
-      // remove surrounding punctuation
       s = s.replace(/^[\(\[\{<]+/, "").replace(/[\)\]\}>.,;!]+$/, "");
-      // If it's just a domain without scheme, keep as-is
-      // Remove tracking params
       s = s.replace(/(\?.*)$/, "");
       return s;
     }
@@ -208,8 +195,7 @@ Single-file app: index.html
       u = u.replace(/^https?:\/\//i, "");
       u = u.replace(/^www\./i, "");
       u = u.split("/")[0];
-      u = u.toLowerCase();
-      return u;
+      return u.toLowerCase();
     }
 
     function isSocialDomain(url) {
@@ -220,10 +206,8 @@ Single-file app: index.html
 
     function findEmails(text) {
       const t = text || "";
-      // conservative email regex
       const re = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
       const found = t.match(re) || [];
-      // dedupe
       return Array.from(new Set(found.map(e => e.toLowerCase())));
     }
 
@@ -231,20 +215,15 @@ Single-file app: index.html
       const t = text || "";
       const urls = new Set();
 
-      // full urls
       const re1 = /\bhttps?:\/\/[^\s<>"')]+/gi;
-      (t.match(re1) || []).forEach(u ♪ => urls.add(u));
+      (t.match(re1) || []).forEach(u => urls.add(u));
 
-      // www.* style
       const re2 = /\bwww\.[^\s<>"')]+\b/gi;
       (t.match(re2) || []).forEach(u => urls.add(u));
 
-      // bare domains (conservative: has a dot + TLD, avoid emails)
       const re3 = /\b(?![A-Z0-9._%+-]+@)([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/gi;
       (t.match(re3) || []).forEach(d => {
-        // Ignore obvious file extensions or junk tokens
         if (/\.(png|jpg|jpeg|gif|svg|pdf|css|js)$/i.test(d)) return;
-        // avoid common "cookie" or "privacy" tokens
         if (/(cookie|privacy|datenschutz|impressum)/i.test(d)) return;
         urls.add(d);
       });
@@ -253,20 +232,15 @@ Single-file app: index.html
     }
 
     function findZipCity(text) {
-      // German ZIP + City: 5 digits + space + city words
-      // city can contain umlauts, hyphen, multiple tokens
       const re = /\b(\d{5})\s+([A-Za-zÀ-ÖØ-öø-ÿÄÖÜäöüß\.\- ]{2,})\b/g;
       const candidates = [];
       let m;
       while ((m = re.exec(text)) !== null) {
         const zip = m[1];
         let city = (m[2] || "").trim();
-        // stop at line breaks
         city = city.split("\n")[0].trim();
-        // avoid capturing too much (e.g., "Dresden Tel ...")
         city = city.replace(/\b(Tel|Telefon|Phone|E-Mail|Email|Web|Website)\b.*$/i, "").trim();
         if (city.length < 2) continue;
-        // city should not contain digits
         if (/\d/.test(city)) continue;
         candidates.push({ zip, city });
       }
@@ -276,25 +250,18 @@ Single-file app: index.html
     function findStreet(text) {
       const lines = (text || "").split(/\n/).map(l => l.trim()).filter(Boolean);
 
-      // Common German street suffix patterns
       const streetRe = /\b(straße|str\.|weg|platz|allee|gasse|ring|damm|ufer|promenade|chaussee|berg|hof|plan|markt)\b/i;
-
-      // House number pattern
       const houseNoRe = /\b\d+[a-zA-Z]?\b/;
 
-      // Scan lines; pick line that contains street indicator and a house number, not too long
       for (const line of lines) {
         const l = line.trim();
         if (l.length < 6 || l.length > 90) continue;
         if (!streetRe.test(l)) continue;
         if (!houseNoRe.test(l)) continue;
-        // Avoid lines that are clearly legal text
         if (/(register|ust|gericht|hrb|hra|steuer)/i.test(l)) continue;
-        // Avoid lines that are just "Adresse: ..."
         return l.replace(/^\s*(adresse|anschrift)\s*[:\-]\s*/i, "").trim();
       }
 
-      // Fallback: line with house number and comma (often "Street 12, 01234 City")
       for (const line of lines) {
         const l = line.trim();
         if (l.length < 6 || l.length > 120) continue;
@@ -312,19 +279,16 @@ Single-file app: index.html
       const t = text || "";
       const candidates = new Set();
 
-      // labels
       const reLabel = /(?:tel\.?|telefon|phone|mobil|fax)\s*[:\-]?\s*([+\d][\d \-\/]{6,})/gi;
       let m;
       while ((m = reLabel.exec(t)) !== null) {
         candidates.add(normalizePhone(m[1]));
       }
 
-      // general: +49... or 0... sequences
       const reGeneral = /\b(?:\+49|0)\s*[\d][\d \-\/]{6,}\b/g;
       (t.match(reGeneral) || []).forEach(p => candidates.add(normalizePhone(p)));
 
       const arr = Array.from(candidates).filter(Boolean);
-      // prefer +49, then longer ones
       arr.sort((a,b) => {
         const a49 = a.trim().startsWith("+49") ? 1 : 0;
         const b49 = b.trim().startsWith("+49") ? 1 : 0;
@@ -359,9 +323,7 @@ Single-file app: index.html
       if (isAddressLike(l)) return false;
       if (isContactLike(l)) return false;
       if (isProbablyNoiseLine(l)) return false;
-      // Avoid pure legal/section headings
       if (/^(impressum|kontakt|datenschutz|privacy|agb|anfrage|standort|öffnungszeiten)$/i.test(l)) return false;
-      // Avoid lines that are mostly punctuation
       if (/^[\W_]+$/.test(l)) return false;
       return true;
     }
@@ -370,20 +332,14 @@ Single-file app: index.html
     function splitIntoBlocks(rawText) {
       const text = normalizeSpaces(rawText);
 
-      // normalize separators
       let t = text;
       HARD_SEPARATORS.forEach(re => { t = t.replace(re, "\n\n---\n\n"); });
 
-      // If there are no blank lines, we still try to split on certain keywords lightly,
-      // but we must not over-split (conservative). We'll mainly use blank lines.
-      // Primary: split on 2+ newlines
       const roughBlocks = t.split(/\n{2,}/).map(b => b.trim()).filter(Boolean);
 
-      // Post-process: if a block is huge (e.g., full website), split on "Kontakt:" or "Impressum" markers.
       const blocks = [];
       for (const b of roughBlocks) {
         if (b.length > 4000) {
-          // split on common section markers
           const parts = b.split(/\n(?=(Kontakt|Impressum|Anschrift|Adresse)\b[: ]?)/i)
                          .map(p => p.trim()).filter(Boolean);
           if (parts.length > 1) blocks.push(...parts);
@@ -402,7 +358,6 @@ Single-file app: index.html
         .map(l => l.trim())
         .filter(l => l.length > 0);
 
-      // Filter noise lines but keep some legal hints (for notes)
       const keptLines = [];
       let imprintHint = false;
 
@@ -412,56 +367,43 @@ Single-file app: index.html
         keptLines.push(line);
       }
 
-      // If after noise-filter almost nothing remains, skip block
       if (keptLines.length === 0) return null;
 
       const keptText = keptLines.join("\n");
 
-      // emails
       const emails = findEmails(keptText);
       const email = emails[0] || "";
 
-      // websites (filter socials)
       const websitesRaw = findWebsites(keptText)
         .map(normalizeWebsite)
         .filter(Boolean)
         .filter(u => !isSocialDomain(u));
 
-      // pick best website: prefer one that contains no path and not generic TLD only
       let website = "";
       if (websitesRaw.length) {
-        // prefer https/http/www entries over bare
         const scored = websitesRaw.map(u => {
           let score = 0;
           if (/^https?:\/\//i.test(u)) score += 3;
           if (/^www\./i.test(u)) score += 2;
-          if (!/[\/]/.test(u.replace(/^https?:\/\//i, ""))) score += 2; // no path
+          if (!/[\/]/.test(u.replace(/^https?:\/\//i, ""))) score += 2;
           if (/\.(de|com|net|org|eu)$/i.test(getDomain(u))) score += 1;
           return { u, score };
         }).sort((a,b) => b.score - a.score);
         website = scored[0].u;
       }
 
-      // phones
       const phones = findPhones(keptText);
       const phone = phones[0] || "";
       const multiplePhones = phones.length > 1;
 
-      // zip/city
       const { zip, city } = findZipCity(keptText);
-
-      // street
       const street = findStreet(keptText);
 
-      // company_name: first good candidate line
       let company_name = "";
       for (const line of keptLines) {
         if (looksLikeCompanyName(line)) { company_name = line; break; }
       }
 
-      // If company_name still empty but we have a domain, fallback to domain as last resort? No: requirement says don't guess.
-      // We'll keep empty.
-      // But we can try a conservative fallback: in imprint blocks, company can be first non-noise line even if includes legal suffixes.
       if (!company_name) {
         const maybe = keptLines.find(l =>
           l.length <= 90 &&
@@ -472,15 +414,13 @@ Single-file app: index.html
         if (maybe && looksLikeCompanyName(maybe)) company_name = maybe;
       }
 
-      // Determine if block likely belongs to a company at all:
       const hasAnyCore = Boolean(company_name || phone || email || website || (zip && city) || street);
       if (!hasAnyCore) return null;
 
-      // Notes
       const notes = [];
       if (imprintHint) notes.push("Impressum gefunden");
       if (!email) notes.push("keine Email");
-      if (!phone) notes.push("nur Email/Website" );
+      if (!phone && (email || website)) notes.push("nur Email/Website");
       if (!street && !(zip && city)) notes.push("Adresse unklar");
       if (multiplePhones) notes.push("mehrere Nummern");
       if (emails.length > 1) notes.push("mehrere Emails");
@@ -495,15 +435,15 @@ Single-file app: index.html
         email: email || "",
         website: website || "",
         source: SOURCE_CONST,
-        notes: clampNotes(notes.filter(Boolean).join(", ")),
-        _rawBlockLen: blockText.length
+        notes: clampNotes(notes.filter(Boolean).join(", "))
       };
     }
 
     // --- Merge & Dedupe ---
+    // IMPORTANT: keep iPhone/Safari compatibility (no Unicode property escapes)
     function normalizeKeyPart(s) {
       return toLowerSafe((s || ""))
-        .replace(/[^\p{L}\p{N}]+/gu, " ")
+        .replace(/[^a-z0-9äöüß]+/gi, " ")
         .replace(/\s+/g, " ")
         .trim();
     }
@@ -513,10 +453,7 @@ Single-file app: index.html
       const zc = normalizeKeyPart((rec.zip || "") + " " + (rec.city || ""));
       const dom = normalizeKeyPart(getDomain(rec.website));
       const phone = normalizeKeyPart(rec.phone);
-      // Priority:
-      // 1) domain if exists
-      // 2) phone if exists
-      // 3) name+zipcity if exists
+
       if (dom) return "d:" + dom;
       if (phone) return "p:" + phone;
       if (name && zc) return "nzc:" + name + "|" + zc;
@@ -526,11 +463,11 @@ Single-file app: index.html
 
     function mergeRecords(base, incoming) {
       const out = { ...base };
-      // fill blanks only
+
       for (const k of ["company_name","street","zip","city","phone","email","website","source"]) {
         if (!out[k] && incoming[k]) out[k] = incoming[k];
       }
-      // merge notes
+
       const notes = new Set();
       [base.notes, incoming.notes].forEach(n => {
         (n || "").split(",").map(x => x.trim()).filter(Boolean).forEach(x => notes.add(x));
@@ -550,11 +487,9 @@ Single-file app: index.html
           map.set(key, r);
           kept.push(r);
         } else {
-          // cautious merge: only if not too uncertain
           const existing = map.get(key);
           const merged = mergeRecords(existing, r);
           map.set(key, merged);
-          // update in kept array
           const idx = kept.indexOf(existing);
           if (idx >= 0) kept[idx] = merged;
         }
@@ -603,6 +538,12 @@ Single-file app: index.html
     }
 
     // --- Main pipeline ---
+    function completenessScore(r) {
+      let s = 0;
+      ["company_name","street","zip","city","phone","email","website"].forEach(k => { if (r[k]) s += 1; });
+      return s;
+    }
+
     function parseAll(rawText) {
       const blocks = splitIntoBlocks(rawText);
 
@@ -616,17 +557,15 @@ Single-file app: index.html
       }
 
       const deduped = dedupe(extracted);
-
-      // Sort: more complete first (optional; helps preview)
       deduped.sort((a,b) => completenessScore(b) - completenessScore(a));
 
-      return { blocksCount: blocks.length, extractedCount: extracted.length, dedupedCount: deduped.length, skippedCount: skipped, records: deduped };
-    }
-
-    function completenessScore(r) {
-      let s = 0;
-      ["company_name","street","zip","city","phone","email","website"].forEach(k => { if (r[k]) s += 1; });
-      return s;
+      return {
+        blocksCount: blocks.length,
+        extractedCount: extracted.length,
+        dedupedCount: deduped.length,
+        skippedCount: skipped,
+        records: deduped
+      };
     }
 
     // --- UI wiring ---
@@ -639,7 +578,20 @@ Single-file app: index.html
     const statsEl = document.getElementById("stats");
     const hintEl = document.getElementById("hint");
 
+    const errBox = document.getElementById("errBox");
+    const errMsg = document.getElementById("errMsg");
+
     let lastResult = null;
+
+    function showError(e) {
+      errMsg.textContent = (e && e.message) ? e.message : String(e);
+      errBox.style.display = "block";
+    }
+
+    function clearError() {
+      errMsg.textContent = "";
+      errBox.style.display = "none";
+    }
 
     function renderStats(res) {
       const cards = [
@@ -666,24 +618,35 @@ Single-file app: index.html
       }
       previewEl.textContent = lines.join("\n");
       hintEl.innerHTML = records.length
-        ? `Hinweis: Export erzeugt <b>leads1.csv</b>, <b>leads2.csv</b> … (max. ${parseInt(maxRowsEl.value||"500",10)} Zeilen/Datei).`
-        : `<span class="warn">Keine verwertbaren Firmen gefunden. Teste: mehr klare Trennungen (Leerzeilen) oder „Kontakt/Impressum" im Text.</span>`;
+        ? `<span class="ok">OK:</span> Export erzeugt <b>leads1.csv</b>, <b>leads2.csv</b> … (max. ${parseInt(maxRowsEl.value||"500",10)} Zeilen/Datei).`
+        : `<span class="warn">Keine verwertbaren Firmen gefunden.</span> Tipp: Trenne Firmen mit Leerzeilen oder '---'.`;
     }
 
     analyzeBtn.addEventListener("click", () => {
-      const raw = inputEl.value || "";
-      lastResult = parseAll(raw);
-      renderStats(lastResult);
-      renderPreview(lastResult.records);
-      exportBtn.disabled = !(lastResult.records && lastResult.records.length);
+      try {
+        clearError();
+        const raw = inputEl.value || "";
+        lastResult = parseAll(raw);
+        renderStats(lastResult);
+        renderPreview(lastResult.records);
+        exportBtn.disabled = !(lastResult.records && lastResult.records.length);
+      } catch (e) {
+        showError(e);
+      }
     });
 
     exportBtn.addEventListener("click", () => {
-      if (!lastResult || !lastResult.records || !lastResult.records.length) return;
-      exportBatches(lastResult.records, maxRowsEl.value);
+      try {
+        clearError();
+        if (!lastResult || !lastResult.records || !lastResult.records.length) return;
+        exportBatches(lastResult.records, maxRowsEl.value);
+      } catch (e) {
+        showError(e);
+      }
     });
 
     clearBtn.addEventListener("click", () => {
+      clearError();
       inputEl.value = "";
       previewEl.textContent = "";
       statsEl.innerHTML = "";
@@ -691,14 +654,6 @@ Single-file app: index.html
       exportBtn.disabled = true;
       lastResult = null;
     });
-
-    // --- Built-in testcases (optional quick sanity) ---
-    // Paste these into the input to test:
-    // 1) Maps-like
-    // 2) Impressum-like
-    // 3) Website footer + noise
-    // 4) Mixed with separators and junk
-    // Expected output: conservative extraction, no social domains as website.
   </script>
 </body>
 </html>
