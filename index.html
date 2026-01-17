@@ -1,0 +1,704 @@
+<meta name='viewport'
+content='width=device-width, initial-scale=1'/><!--
+Schubert CRM – Lead Extractor (Offline, iPhone/Windows)
+Single-file app: index.html
+- Paste Rohtext
+- Tool extrahiert Firmenkontakte (konservativ), filtert Müll, dedupliziert
+- Export: leads1.csv, leads2.csv, ...
+- Läuft lokal in Safari (iPhone) oder jedem Desktop-Browser (Windows)
+-->
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Lead Extractor – Rohtext → CSV</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 16px; }
+    h1 { font-size: 18px; margin: 0 0 10px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+    textarea { width: 100%; min-height: 320px; resize: vertical; padding: 10px; border-radius: 10px; border: 1px solid #8886; }
+    input[type="number"] { width: 120px; padding: 8px; border-radius: 10px; border: 1px solid #8886; }
+    button { padding: 10px 12px; border-radius: 10px; border: 1px solid #8886; cursor: pointer; }
+    button:active { transform: translateY(1px); }
+    .small { font-size: 12px; opacity: 0.8; }
+    .panel { border: 1px solid #8886; border-radius: 12px; padding: 10px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; }
+    .stat { padding: 8px 10px; border-radius: 10px; border: 1px solid #8886; }
+    pre { white-space: pre-wrap; word-break: break-word; }
+    .warn { color: #c00; }
+  </style>
+</head>
+<body>
+  <h1>Lead Extractor (Offline) – Rohtext → leads1.csv, leads2.csv, ...</h1>
+
+  <div class="row small">
+    <div class="panel">
+      <div><b>CSV Spalten:</b> <span class="mono">company_name,street,zip,city,phone,email,website,source,notes</span></div>
+      <div class="small">Konservativ: Wenn unklar → Feld leer. Kein Raten. Keine Webrequests.</div>
+    </div>
+  </div>
+
+  <textarea id="input" placeholder="Rohtext hier einfügen … (Maps / Impressum / Website / Müll gemischt)"></textarea>
+
+  <div class="row">
+    <label class="small">Max. Zeilen pro CSV:
+      <input id="maxRows" type="number" min="1" step="1" value="500" />
+    </label>
+    <button id="analyzeBtn">Analysieren</button>
+    <button id="exportBtn" disabled>CSV exportieren</button>
+    <button id="clearBtn">Leeren</button>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="row">
+    <div class="panel" style="width:100%">
+      <div class="small"><b>Vorschau (erste 20 Zeilen CSV):</b></div>
+      <pre id="preview" class="mono small"></pre>
+      <div id="hint" class="small"></div>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * Lead Extractor – heuristisch, konservativ
+     * Wichtige Ziele:
+     * - Müll/Noise ignorieren
+     * - Segmentierung in Firmen-Blöcke
+     * - Extraktion: company_name, street, zip, city, phone, email, website
+     * - Normalisierung
+     * - Dedupe + Merge
+     * - Export: leads1.csv, leads2.csv, ...
+     */
+
+    // --- Configuration ---
+    const SOURCE_CONST = "manual_copy";
+    const DEFAULT_NOTES_LIMIT = 120;
+
+    // Social domains should NOT become website
+    const SOCIAL_HOST_BLACKLIST = [
+      "facebook.com", "fb.com", "instagram.com", "linkedin.com", "tiktok.com",
+      "youtube.com", "youtu.be", "xing.com", "twitter.com", "x.com", "pinterest.com"
+    ];
+
+    // Strong noise patterns (common cookie/footer/navigation stuff)
+    const NOISE_PATTERNS = [
+      /cookie(s)?/i,
+      /consent/i,
+      /datenschutz/i,
+      /privacy/i,
+      /impressum\s*$/i,            // lone "Impressum" line is usually navigation
+      /\b(agb|terms)\b/i,
+      /\b(alle\s*rechte\s*vorbehalten|copyright|©)\b/i,
+      /\b(navigation|menu|menü)\b/i,
+      /\b(home|startseite|kontakt|leistungen|über uns|karriere|jobs|blog|news|shop|warenkorb)\b/i,
+      /\b(öffnungszeiten)\b/i,     // not always noise, but usually not needed
+      /\b(standort(e)?|route|anfahrt)\b/i,
+      /\b(google\s*analytics|matomo|tracking)\b/i,
+      /\b(javascript|css|html)\b/i,
+      /\b(accept|ablehnen|zustimmen|weiter)\b/i,
+      /newsletter/i,
+      /haftung/i,
+      /urheber/i,
+      /verantwortlich/i,
+      /redaktionell/i,
+    ];
+
+    // Terms that often indicate an imprint/legal block (useful note)
+    const IMPRINT_HINTS = [
+      /\bust-?id\b/i,
+      /\bustid\b/i,
+      /\bumsatzsteuer\b/i,
+      /\bregistergericht\b/i,
+      /\bhandelsregister\b/i,
+      /\bhrb\b/i,
+      /\bhra\b/i,
+      /\bvertretungsberechtigt\b/i,
+      /\bgeschäftsführer\b/i,
+      /\binhaber\b/i,
+    ];
+
+    // Segment separators, can hint new company blocks
+    const HARD_SEPARATORS = [
+      /^---+$/m,
+      /^===+$/m,
+      /^\*\*\*+$/m,
+    ];
+
+    // --- Helpers ---
+    function normalizeSpaces(s) {
+      return (s || "")
+        .replace(/\u00A0/g, " ")
+        .replace(/[ \t]+/g, " ")
+        .replace(/\s+\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+    }
+
+    function toLowerSafe(s) { return (s || "").toLowerCase(); }
+
+    function clampNotes(s) {
+      const t = (s || "").trim();
+      if (t.length <= DEFAULT_NOTES_LIMIT) return t;
+      return t.slice(0, DEFAULT_NOTES_LIMIT - 1).trim() + "…";
+    }
+
+    function isProbablyNoiseLine(line) {
+      const l = (line || "").trim();
+      if (!l) return true;
+
+      // Very short single menu items
+      if (l.length <= 3) return true;
+      // pure separators / bullets
+      if (/^[\-\–\--\•\|\/\\\s]+$/.test(l)) return true;
+
+      // Many sites have repeated nav keywords - treat as noise if line is only a couple of words
+      if (l.length <= 30) {
+        const navish = /\b(home|kontakt|impressum|datenschutz|agb|leistungen|news|blog)\b/i;
+        if (navish.test(l) && !/@/.test(l) && !/\d{5}/.test(l) && !/(tel|telefon|\+49)/i.test(l)) return true;
+      }
+
+      // Cookie / privacy / legal boilerplate
+      for (const re of NOISE_PATTERNS) {
+        if (re.test(l) && l.length < 120) return true;
+      }
+
+      // If line is basically a cookie accept text
+      if (/(akzeptieren|zustimmen|ablehnen|einstellungen)/i.test(l) && /cookie/i.test(l)) return true;
+
+      return false;
+    }
+
+    function stripLabels(s) {
+      // remove leading labels like "Tel:", "Telefon:", "E-Mail:"
+      return (s || "")
+        .replace(/^\s*(tel\.?|telefon|phone|mobil|fax)\s*[:\-]\s*/i, "")
+        .replace(/^\s*(e-?mail)\s*[:\-]\s*/i, "")
+        .replace(/^\s*(web(site)?|internet|url)\s*[:\-]\s*/i, "")
+        .trim();
+    }
+
+    function normalizePhone(raw) {
+      if (!raw) return "";
+      let s = stripLabels(raw);
+      // Keep only digits, space, +, /, -
+      s = s.replace(/[^\d +\/\-]/g, "");
+      // normalize spacing a bit
+      s = s.replace(/[ ]{2,}/g, " ").trim();
+      return s;
+    }
+
+    function normalizeWebsite(raw) {
+      if (!raw) return "";
+      let s = stripLabels(raw).trim();
+      // remove surrounding punctuation
+      s = s.replace(/^[\(\[\{<]+/, "").replace(/[\)\]\}>.,;!]+$/, "");
+      // If it's just a domain without scheme, keep as-is
+      // Remove tracking params
+      s = s.replace(/(\?.*)$/, "");
+      return s;
+    }
+
+    function getDomain(url) {
+      if (!url) return "";
+      let u = url.trim();
+      u = u.replace(/^https?:\/\//i, "");
+      u = u.replace(/^www\./i, "");
+      u = u.split("/")[0];
+      u = u.toLowerCase();
+      return u;
+    }
+
+    function isSocialDomain(url) {
+      const d = getDomain(url);
+      if (!d) return false;
+      return SOCIAL_HOST_BLACKLIST.some(host => d === host || d.endsWith("." + host));
+    }
+
+    function findEmails(text) {
+      const t = text || "";
+      // conservative email regex
+      const re = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
+      const found = t.match(re) || [];
+      // dedupe
+      return Array.from(new Set(found.map(e => e.toLowerCase())));
+    }
+
+    function findWebsites(text) {
+      const t = text || "";
+      const urls = new Set();
+
+      // full urls
+      const re1 = /\bhttps?:\/\/[^\s<>"')]+/gi;
+      (t.match(re1) || []).forEach(u ♪ => urls.add(u));
+
+      // www.* style
+      const re2 = /\bwww\.[^\s<>"')]+\b/gi;
+      (t.match(re2) || []).forEach(u => urls.add(u));
+
+      // bare domains (conservative: has a dot + TLD, avoid emails)
+      const re3 = /\b(?![A-Z0-9._%+-]+@)([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/gi;
+      (t.match(re3) || []).forEach(d => {
+        // Ignore obvious file extensions or junk tokens
+        if (/\.(png|jpg|jpeg|gif|svg|pdf|css|js)$/i.test(d)) return;
+        // avoid common "cookie" or "privacy" tokens
+        if (/(cookie|privacy|datenschutz|impressum)/i.test(d)) return;
+        urls.add(d);
+      });
+
+      return Array.from(urls);
+    }
+
+    function findZipCity(text) {
+      // German ZIP + City: 5 digits + space + city words
+      // city can contain umlauts, hyphen, multiple tokens
+      const re = /\b(\d{5})\s+([A-Za-zÀ-ÖØ-öø-ÿÄÖÜäöüß\.\- ]{2,})\b/g;
+      const candidates = [];
+      let m;
+      while ((m = re.exec(text)) !== null) {
+        const zip = m[1];
+        let city = (m[2] || "").trim();
+        // stop at line breaks
+        city = city.split("\n")[0].trim();
+        // avoid capturing too much (e.g., "Dresden Tel ...")
+        city = city.replace(/\b(Tel|Telefon|Phone|E-Mail|Email|Web|Website)\b.*$/i, "").trim();
+        if (city.length < 2) continue;
+        // city should not contain digits
+        if (/\d/.test(city)) continue;
+        candidates.push({ zip, city });
+      }
+      return candidates[0] || { zip: "", city: "" };
+    }
+
+    function findStreet(text) {
+      const lines = (text || "").split(/\n/).map(l => l.trim()).filter(Boolean);
+
+      // Common German street suffix patterns
+      const streetRe = /\b(straße|str\.|weg|platz|allee|gasse|ring|damm|ufer|promenade|chaussee|berg|hof|plan|markt)\b/i;
+
+      // House number pattern
+      const houseNoRe = /\b\d+[a-zA-Z]?\b/;
+
+      // Scan lines; pick line that contains street indicator and a house number, not too long
+      for (const line of lines) {
+        const l = line.trim();
+        if (l.length < 6 || l.length > 90) continue;
+        if (!streetRe.test(l)) continue;
+        if (!houseNoRe.test(l)) continue;
+        // Avoid lines that are clearly legal text
+        if (/(register|ust|gericht|hrb|hra|steuer)/i.test(l)) continue;
+        // Avoid lines that are just "Adresse: ..."
+        return l.replace(/^\s*(adresse|anschrift)\s*[:\-]\s*/i, "").trim();
+      }
+
+      // Fallback: line with house number and comma (often "Street 12, 01234 City")
+      for (const line of lines) {
+        const l = line.trim();
+        if (l.length < 6 || l.length > 120) continue;
+        if (houseNoRe.test(l) && /,/.test(l) && !/@/.test(l)) {
+          const parts = l.split(",");
+          const first = parts[0].trim();
+          if (first.length >= 6 && first.length <= 90) return first;
+        }
+      }
+
+      return "";
+    }
+
+    function findPhones(text) {
+      const t = text || "";
+      const candidates = new Set();
+
+      // labels
+      const reLabel = /(?:tel\.?|telefon|phone|mobil|fax)\s*[:\-]?\s*([+\d][\d \-\/]{6,})/gi;
+      let m;
+      while ((m = reLabel.exec(t)) !== null) {
+        candidates.add(normalizePhone(m[1]));
+      }
+
+      // general: +49... or 0... sequences
+      const reGeneral = /\b(?:\+49|0)\s*[\d][\d \-\/]{6,}\b/g;
+      (t.match(reGeneral) || []).forEach(p => candidates.add(normalizePhone(p)));
+
+      const arr = Array.from(candidates).filter(Boolean);
+      // prefer +49, then longer ones
+      arr.sort((a,b) => {
+        const a49 = a.trim().startsWith("+49") ? 1 : 0;
+        const b49 = b.trim().startsWith("+49") ? 1 : 0;
+        if (a49 !== b49) return b49 - a49;
+        return b.length - a.length;
+      });
+      return arr;
+    }
+
+    function isAddressLike(line) {
+      const l = (line || "").trim();
+      if (!l) return false;
+      if (/\d{5}\s+\S+/.test(l)) return true;
+      if (/(straße|str\.|weg|platz|allee|gasse)\b/i.test(l) && /\d/.test(l)) return true;
+      return false;
+    }
+
+    function isContactLike(line) {
+      const l = (line || "").trim();
+      if (!l) return false;
+      if (/@/.test(l)) return true;
+      if (/(tel|telefon|phone|mobil|fax)\b/i.test(l)) return true;
+      if (/\+49|(^|\s)0\d{2,}/.test(l)) return true;
+      if (/https?:\/\//i.test(l) || /\bwww\./i.test(l)) return true;
+      return false;
+    }
+
+    function looksLikeCompanyName(line) {
+      const l = (line || "").trim();
+      if (!l) return false;
+      if (l.length < 2 || l.length > 90) return false;
+      if (isAddressLike(l)) return false;
+      if (isContactLike(l)) return false;
+      if (isProbablyNoiseLine(l)) return false;
+      // Avoid pure legal/section headings
+      if (/^(impressum|kontakt|datenschutz|privacy|agb|anfrage|standort|öffnungszeiten)$/i.test(l)) return false;
+      // Avoid lines that are mostly punctuation
+      if (/^[\W_]+$/.test(l)) return false;
+      return true;
+    }
+
+    // --- Segmentierung ---
+    function splitIntoBlocks(rawText) {
+      const text = normalizeSpaces(rawText);
+
+      // normalize separators
+      let t = text;
+      HARD_SEPARATORS.forEach(re => { t = t.replace(re, "\n\n---\n\n"); });
+
+      // If there are no blank lines, we still try to split on certain keywords lightly,
+      // but we must not over-split (conservative). We'll mainly use blank lines.
+      // Primary: split on 2+ newlines
+      const roughBlocks = t.split(/\n{2,}/).map(b => b.trim()).filter(Boolean);
+
+      // Post-process: if a block is huge (e.g., full website), split on "Kontakt:" or "Impressum" markers.
+      const blocks = [];
+      for (const b of roughBlocks) {
+        if (b.length > 4000) {
+          // split on common section markers
+          const parts = b.split(/\n(?=(Kontakt|Impressum|Anschrift|Adresse)\b[: ]?)/i)
+                         .map(p => p.trim()).filter(Boolean);
+          if (parts.length > 1) blocks.push(...parts);
+          else blocks.push(b);
+        } else {
+          blocks.push(b);
+        }
+      }
+      return blocks;
+    }
+
+    // --- Extraktion pro Block ---
+    function extractFromBlock(blockText) {
+      const lines = (blockText || "")
+        .split("\n")
+        .map(l => l.trim())
+        .filter(l => l.length > 0);
+
+      // Filter noise lines but keep some legal hints (for notes)
+      const keptLines = [];
+      let imprintHint = false;
+
+      for (const line of lines) {
+        if (IMPRINT_HINTS.some(re => re.test(line))) imprintHint = true;
+        if (isProbablyNoiseLine(line)) continue;
+        keptLines.push(line);
+      }
+
+      // If after noise-filter almost nothing remains, skip block
+      if (keptLines.length === 0) return null;
+
+      const keptText = keptLines.join("\n");
+
+      // emails
+      const emails = findEmails(keptText);
+      const email = emails[0] || "";
+
+      // websites (filter socials)
+      const websitesRaw = findWebsites(keptText)
+        .map(normalizeWebsite)
+        .filter(Boolean)
+        .filter(u => !isSocialDomain(u));
+
+      // pick best website: prefer one that contains no path and not generic TLD only
+      let website = "";
+      if (websitesRaw.length) {
+        // prefer https/http/www entries over bare
+        const scored = websitesRaw.map(u => {
+          let score = 0;
+          if (/^https?:\/\//i.test(u)) score += 3;
+          if (/^www\./i.test(u)) score += 2;
+          if (!/[\/]/.test(u.replace(/^https?:\/\//i, ""))) score += 2; // no path
+          if (/\.(de|com|net|org|eu)$/i.test(getDomain(u))) score += 1;
+          return { u, score };
+        }).sort((a,b) => b.score - a.score);
+        website = scored[0].u;
+      }
+
+      // phones
+      const phones = findPhones(keptText);
+      const phone = phones[0] || "";
+      const multiplePhones = phones.length > 1;
+
+      // zip/city
+      const { zip, city } = findZipCity(keptText);
+
+      // street
+      const street = findStreet(keptText);
+
+      // company_name: first good candidate line
+      let company_name = "";
+      for (const line of keptLines) {
+        if (looksLikeCompanyName(line)) { company_name = line; break; }
+      }
+
+      // If company_name still empty but we have a domain, fallback to domain as last resort? No: requirement says don't guess.
+      // We'll keep empty.
+      // But we can try a conservative fallback: in imprint blocks, company can be first non-noise line even if includes legal suffixes.
+      if (!company_name) {
+        const maybe = keptLines.find(l =>
+          l.length <= 90 &&
+          !isAddressLike(l) &&
+          !isContactLike(l) &&
+          !/^(kontakt|impressum|datenschutz)$/i.test(l)
+        );
+        if (maybe && looksLikeCompanyName(maybe)) company_name = maybe;
+      }
+
+      // Determine if block likely belongs to a company at all:
+      const hasAnyCore = Boolean(company_name || phone || email || website || (zip && city) || street);
+      if (!hasAnyCore) return null;
+
+      // Notes
+      const notes = [];
+      if (imprintHint) notes.push("Impressum gefunden");
+      if (!email) notes.push("keine Email");
+      if (!phone) notes.push("nur Email/Website" );
+      if (!street && !(zip && city)) notes.push("Adresse unklar");
+      if (multiplePhones) notes.push("mehrere Nummern");
+      if (emails.length > 1) notes.push("mehrere Emails");
+      if (website && websitesRaw.length > 1) notes.push("mehrere Websites");
+
+      return {
+        company_name: company_name || "",
+        street: street || "",
+        zip: zip || "",
+        city: city || "",
+        phone: phone || "",
+        email: email || "",
+        website: website || "",
+        source: SOURCE_CONST,
+        notes: clampNotes(notes.filter(Boolean).join(", ")),
+        _rawBlockLen: blockText.length
+      };
+    }
+
+    // --- Merge & Dedupe ---
+    function normalizeKeyPart(s) {
+      return toLowerSafe((s || ""))
+        .replace(/[^\p{L}\p{N}]+/gu, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function recordKey(rec) {
+      const name = normalizeKeyPart(rec.company_name);
+      const zc = normalizeKeyPart((rec.zip || "") + " " + (rec.city || ""));
+      const dom = normalizeKeyPart(getDomain(rec.website));
+      const phone = normalizeKeyPart(rec.phone);
+      // Priority:
+      // 1) domain if exists
+      // 2) phone if exists
+      // 3) name+zipcity if exists
+      if (dom) return "d:" + dom;
+      if (phone) return "p:" + phone;
+      if (name && zc) return "nzc:" + name + "|" + zc;
+      if (name) return "n:" + name;
+      return "unknown:" + Math.random().toString(36).slice(2);
+    }
+
+    function mergeRecords(base, incoming) {
+      const out = { ...base };
+      // fill blanks only
+      for (const k of ["company_name","street","zip","city","phone","email","website","source"]) {
+        if (!out[k] && incoming[k]) out[k] = incoming[k];
+      }
+      // merge notes
+      const notes = new Set();
+      [base.notes, incoming.notes].forEach(n => {
+        (n || "").split(",").map(x => x.trim()).filter(Boolean).forEach(x => notes.add(x));
+      });
+      notes.add("merged");
+      out.notes = clampNotes(Array.from(notes).join(", "));
+      return out;
+    }
+
+    function dedupe(records) {
+      const map = new Map();
+      const kept = [];
+
+      for (const r of records) {
+        const key = recordKey(r);
+        if (!map.has(key)) {
+          map.set(key, r);
+          kept.push(r);
+        } else {
+          // cautious merge: only if not too uncertain
+          const existing = map.get(key);
+          const merged = mergeRecords(existing, r);
+          map.set(key, merged);
+          // update in kept array
+          const idx = kept.indexOf(existing);
+          if (idx >= 0) kept[idx] = merged;
+        }
+      }
+      return kept;
+    }
+
+    // --- CSV export ---
+    function csvEscape(val) {
+      const s = (val ?? "").toString();
+      if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+      return s;
+    }
+
+    function recordsToCSV(records) {
+      const header = ["company_name","street","zip","city","phone","email","website","source","notes"];
+      const lines = [header.join(",")];
+      for (const r of records) {
+        const row = header.map(h => csvEscape(r[h] || ""));
+        lines.push(row.join(","));
+      }
+      return lines.join("\n");
+    }
+
+    function downloadText(filename, content) {
+      const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function exportBatches(records, maxRowsPerFile) {
+      const maxRows = Math.max(1, parseInt(maxRowsPerFile, 10) || 500);
+      let fileNo = 1;
+      for (let i = 0; i < records.length; i += maxRows) {
+        const chunk = records.slice(i, i + maxRows);
+        const csv = recordsToCSV(chunk);
+        downloadText(`leads${fileNo}.csv`, csv);
+        fileNo++;
+      }
+    }
+
+    // --- Main pipeline ---
+    function parseAll(rawText) {
+      const blocks = splitIntoBlocks(rawText);
+
+      const extracted = [];
+      let skipped = 0;
+
+      for (const b of blocks) {
+        const rec = extractFromBlock(b);
+        if (rec) extracted.push(rec);
+        else skipped++;
+      }
+
+      const deduped = dedupe(extracted);
+
+      // Sort: more complete first (optional; helps preview)
+      deduped.sort((a,b) => completenessScore(b) - completenessScore(a));
+
+      return { blocksCount: blocks.length, extractedCount: extracted.length, dedupedCount: deduped.length, skippedCount: skipped, records: deduped };
+    }
+
+    function completenessScore(r) {
+      let s = 0;
+      ["company_name","street","zip","city","phone","email","website"].forEach(k => { if (r[k]) s += 1; });
+      return s;
+    }
+
+    // --- UI wiring ---
+    const inputEl = document.getElementById("input");
+    const maxRowsEl = document.getElementById("maxRows");
+    const analyzeBtn = document.getElementById("analyzeBtn");
+    const exportBtn = document.getElementById("exportBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const previewEl = document.getElementById("preview");
+    const statsEl = document.getElementById("stats");
+    const hintEl = document.getElementById("hint");
+
+    let lastResult = null;
+
+    function renderStats(res) {
+      const cards = [
+        { label: "Blöcke erkannt", value: res.blocksCount },
+        { label: "Extrahiert (vor Dedupe)", value: res.extractedCount },
+        { label: "Nach Dedupe/Merge", value: res.dedupedCount },
+        { label: "Übersprungen (nur Müll/unklar)", value: res.skippedCount },
+      ];
+      statsEl.innerHTML = cards.map(c => `
+        <div class="stat">
+          <div class="small">${c.label}</div>
+          <div style="font-size:18px"><b>${c.value}</b></div>
+        </div>
+      `).join("");
+    }
+
+    function renderPreview(records) {
+      const head = ["company_name","street","zip","city","phone","email","website","source","notes"];
+      const lines = [head.join(",")];
+      const n = Math.min(20, records.length);
+      for (let i=0;i<n;i++) {
+        const r = records[i];
+        lines.push(head.map(h => csvEscape(r[h] || "")).join(","));
+      }
+      previewEl.textContent = lines.join("\n");
+      hintEl.innerHTML = records.length
+        ? `Hinweis: Export erzeugt <b>leads1.csv</b>, <b>leads2.csv</b> … (max. ${parseInt(maxRowsEl.value||"500",10)} Zeilen/Datei).`
+        : `<span class="warn">Keine verwertbaren Firmen gefunden. Teste: mehr klare Trennungen (Leerzeilen) oder „Kontakt/Impressum" im Text.</span>`;
+    }
+
+    analyzeBtn.addEventListener("click", () => {
+      const raw = inputEl.value || "";
+      lastResult = parseAll(raw);
+      renderStats(lastResult);
+      renderPreview(lastResult.records);
+      exportBtn.disabled = !(lastResult.records && lastResult.records.length);
+    });
+
+    exportBtn.addEventListener("click", () => {
+      if (!lastResult || !lastResult.records || !lastResult.records.length) return;
+      exportBatches(lastResult.records, maxRowsEl.value);
+    });
+
+    clearBtn.addEventListener("click", () => {
+      inputEl.value = "";
+      previewEl.textContent = "";
+      statsEl.innerHTML = "";
+      hintEl.textContent = "";
+      exportBtn.disabled = true;
+      lastResult = null;
+    });
+
+    // --- Built-in testcases (optional quick sanity) ---
+    // Paste these into the input to test:
+    // 1) Maps-like
+    // 2) Impressum-like
+    // 3) Website footer + noise
+    // 4) Mixed with separators and junk
+    // Expected output: conservative extraction, no social domains as website.
+  </script>
+</body>
+</html>
