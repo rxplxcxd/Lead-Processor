@@ -30,7 +30,7 @@ button[disabled]{opacity:.5;cursor:not-allowed}.btnP{border-color:#69f6}.btnG{op
 .bad{display:inline-flex;align-items:center;gap:6px;border:1px solid #c006;border-radius:999px;padding:2px 8px;font-size:12px;background:color-mix(in srgb, Canvas 94%, transparent)}
 .tableWrap{border:var(--b);border-radius:var(--r);overflow:hidden;background:color-mix(in srgb, Canvas 92%, transparent)}
 .tableScroll{max-height:40vh;overflow:auto;-webkit-overflow-scrolling:touch}
-table{border-collapse:collapse;min-width:900px;width:900px;font-size:12px}
+table{border-collapse:collapse;min-width:980px;width:980px;font-size:12px}
 thead th{position:sticky;top:0;background:color-mix(in srgb, Canvas 96%, transparent);border-bottom:var(--b);padding:10px 8px;text-align:left;white-space:nowrap;z-index:2}
 tbody td{border-bottom:1px solid #8883;padding:8px;white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis}
 tbody tr{cursor:pointer}tbody tr:hover td{background:color-mix(in srgb, Canvas 88%, transparent)}
@@ -57,7 +57,7 @@ hr{border:0;border-top:1px solid #8884;margin:10px 0}
 
   <div class="card small">
     <div><b>CSV:</b> <span class="mono">company_name,street,zip,city,phone,email,website,source,notes</span></div>
-    <div class="small">Auto-Analyse (700ms), Filter „fehlende Felder“, Fix-Modus, Duplikat-Warnung, Session Save/Load, Black/Whitelist.</div>
+    <div class="small">Neu: „Fließtext/ohne Absätze“ erkennen (Option), Ampel streng (Grün nur wenn ALLE Felder voll), Sort/Filter, Auto-Analyse (700ms), Fix-Modus, Duplikat-Warnung, Session Save/Load, Black/Whitelist.</div>
   </div>
 
   <div class="row" style="margin-top:10px"><textarea id="in" placeholder="Rohtext hier einfügen …"></textarea></div>
@@ -65,6 +65,7 @@ hr{border:0;border-top:1px solid #8884;margin:10px 0}
   <div class="card small">
     <div class="row" style="margin:0">
       <button id="normBtn" class="btnG">Absätze normalisieren</button>
+      <label class="tog"><input id="flowOn" type="checkbox">Fließtext split</label>
       <button id="saveBtn" class="btnG">Session speichern</button>
       <label class="btnG" style="padding:0;border:none;background:none">
         <span class="pill">Session laden</span>
@@ -76,6 +77,13 @@ hr{border:0;border-top:1px solid #8884;margin:10px 0}
     <div class="row" style="margin:0">
       <label>Max/CSV <input id="max" type="number" min="1" step="1" value="5000"></label>
       <label>PLZ <select id="zip"><option value="excel_text" selected>Excel-safe</option><option value="plain">Plain</option></select></label>
+      <label>Sort <select id="sort">
+        <option value="qdesc" selected>Ampel (best→schlecht)</option>
+        <option value="qasc">Ampel (schlecht→best)</option>
+        <option value="name">Firma A→Z</option>
+        <option value="city">Ort A→Z</option>
+        <option value="dup">Duplikate zuerst</option>
+      </select></label>
       <button id="go" class="btnP">Analysieren</button>
       <button id="exp" disabled>CSV exportieren</button>
       <button id="cpy" disabled class="btnG">CSV kopieren</button>
@@ -87,6 +95,7 @@ hr{border:0;border-top:1px solid #8884;margin:10px 0}
       <label class="tog"><input id="fltE" type="checkbox" checked>Email</label>
       <label class="tog"><input id="fltP" type="checkbox" checked>Telefon</label>
       <label class="tog"><input id="fltS" type="checkbox" checked>Straße</label>
+      <label class="tog"><input id="onlyG" type="checkbox">Nur Grün</label>
     </div>
     <div class="row" style="margin:10px 0 0">
       <div style="flex:1;min-width:180px">
@@ -133,7 +142,7 @@ const START=[/^google\s*maps$/i,/^apple\s*maps$/i,/^impressum$/i,/^kontakt$/i,/^
 const SEP=/^(\-{3,}|={3,}|\*{3,}|•{3,}|_{3,})$/;
 const JUNK=[/^bewertungen?\b/i,/^öffnungszeiten?\b/i,/^ust-?id\b/i,/^ustid\b/i,/^umsatzsteuer\b/i,/^handelsregister\b/i,/^registergericht\b/i,/^hrb\b/i,/^hra\b/i,/^impressum\s*:/i,/^datenschutz\s*:/i,/^route\b/i,/^speichern\b/i,/^teilen\b/i,/^in\s+der\s+nähe\b/i,/^cookie\b/i,/^navigation\b/i];
 const NOISE=[/cookie(s)?/i,/consent/i,/datenschutz/i,/privacy/i,/\b(alle\s*rechte\s*vorbehalten|copyright|©)\b/i,/\b(navigation|menu|menü)\b/i,/\b(home|startseite|kontakt|leistungen|über uns|karriere|jobs|blog|news|shop|warenkorb)\b/i,/\b(standort(e)?|route|anfahrt)\b/i,/\b(google\s*analytics|matomo|tracking)\b/i,/\b(javascript|css|html)\b/i,/\b(accept|ablehnen|zustimmen|weiter)\b/i,/newsletter/i,/haftung/i,/urheber/i,/verantwortlich/i,/redaktionell/i];
-const IMPR=[/\bust-?id\b/i,/\bregistergericht\b/i,/\bhandelsregister\b/i,/\bhrb\b/i,/\bhra\b/i,/\bvertretungsberechtigt\b/i,/\bgeschäftsführer\b/i,/\binhaber\b/i];
+const IMPR=[/\bust-?id\b/i,/\bregistergericht\b/i,/\bhandelsregister\b/i,/\bhrb\b/i,/\bhra\b/i,/\bvertretungsberechtigt\b/i,/\bgeschäftsführer\b/i,/\\binhaber\\b/i];
 
 /* ===== Small utils ===== */
 const $=id=>document.getElementById(id);
@@ -170,14 +179,10 @@ function nPhone(raw){if(!raw) return ""; let s=stripLbl(stripInline(raw)); retur
 function nWeb(raw){if(!raw) return ""; let s=stripLbl(stripInline(raw)).trim(); return s.replace(/^[\(\[\{<]+/,"").replace(/[\)\]\}>.,;!]+$/,"").replace(/(\?.*)$/,"");}
 
 /* ===== Black/White list ===== */
-function linesToTokens(v){
-  return (v||"").split(/\n+/).map(x=>x.trim()).filter(Boolean).slice(0,300);
-}
+function linesToTokens(v){return (v||"").split(/\n+/).map(x=>x.trim()).filter(Boolean).slice(0,300);}
 function mkTokenRes(){
   const bl=linesToTokens($("bl").value), wl=linesToTokens($("wl").value);
-  const blRe=bl.map(t=>new RegExp(escRe(t),"i"));
-  const wlRe=wl.map(t=>new RegExp(escRe(t),"i"));
-  return {bl,wl,blRe,wlRe};
+  return {bl,wl,blRe:bl.map(t=>new RegExp(escRe(t),"i")),wlRe:wl.map(t=>new RegExp(escRe(t),"i"))};
 }
 let TOK=mkTokenRes();
 
@@ -192,41 +197,41 @@ function isJ(l){
   return false;
 }
 
-/* ===== Email: strongest practical extraction ===== */
+/* ===== Email: stronger + more cases ===== */
 function emailVariants(t){
   t=san(t||""); const v=[];
   v.push(t);
   v.push(t.replace(/\r/g,""));
   v.push(t.replace(/\n+/g," "));
-  v.push(t.replace(/-\s*\n\s*/g,""));                 // hyphen newline join
+  v.push(t.replace(/-\s*\n\s*/g,""));
   v.push(t.replace(/@\s*\n\s*/g,"@").replace(/\.\s*\n\s*/g,"."));
   v.push(t.replace(/\s*@\s*/g,"@").replace(/\s*\.\s*/g,"."));
-  v.push(t.replace(/\(\s*at\s*\)|\[\s*at\s*\]|\s+at\s+/ig,"@")
-         .replace(/\(\s*dot\s*\)|\[\s*dot\s*\]|\s+dot\s+/ig,".")
+  v.push(t.replace(/\(\s*at\s*\)|\[\s*at\s*\]|\s+at\s+|\s*\{at\}\s*/ig,"@")
+         .replace(/\(\s*dot\s*\)|\[\s*dot\s*\]|\s+dot\s+|\s*\{dot\}\s*/ig,".")
          .replace(/\s*@\s*/g,"@").replace(/\s*\.\s*/g,"."));
-  v.push(t.replace(/\s+/g,""));                       // full glue
+  v.push(t.replace(/＠/g,"@").replace(/[。｡]/g,"."));
+  v.push(t.replace(/\s+/g,""));
+  // common “mailto:”
+  v.push(t.replace(/mailto:/ig," "));
   return v;
 }
 function cleanEmail(s){
   s=(s||"").toLowerCase();
-  s=s.replace(/^[^\w]+|[^\w]+$/g,"").replace(/[>,;)\]]+$/g,"");
-  s=stripLbl(s).replace(/\s*@\s*/g,"@").replace(/\s*\.\s*/g,".");
-  // normalize fullwidth @ / dots sometimes
-  s=s.replace(/＠/g,"@").replace(/。/g,".").trim();
+  s=s.replace(/mailto:/g,"").replace(/^[^\w]+|[^\w]+$/g,"").replace(/[>,;)\]]+$/g,"");
+  s=stripLbl(s).replace(/\s*@\s*/g,"@").replace(/\s*\.\s*/g,".").replace(/＠/g,"@").replace(/[。｡]/g,".").trim();
   return s;
 }
 function findEmails(t){
   const found=new Set();
-  const re=/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,24}/gi;
+  const re=/[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,24}/gi;
   for(const src of emailVariants(t)) (src.match(re)||[]).forEach(x=>found.add(cleanEmail(x)));
-  // window-join lines: catches "name@" then next line "domain.de"
   const L=san(t||"").split("\n").map(x=>x.trim()).filter(Boolean);
   for(let i=0;i<L.length;i++){
     const a=L[i], b=L[i+1]||"", c=L[i+2]||"";
     const j=[a+" "+b, a+" "+b+" "+c, a+b, a+b+c].join(" ");
     (j.match(re)||[]).forEach(x=>found.add(cleanEmail(x)));
   }
-  let valid=[...found].filter(e=>/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,24}$/.test(e));
+  let valid=[...found].filter(e=>/^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,24}$/.test(e) && !/\.{2,}/.test(e));
   valid.sort((A,B)=>{
     const sc=x=>(/(^|@)(info|kontakt|office|mail|service|hallo|hello|vertrieb|support)\b/.test(x)?2:0)+1;
     return sc(B)-sc(A);
@@ -252,7 +257,7 @@ function findWebsites(text){
     if(/(cookie|privacy|datenschutz|impressum)/i.test(d)) return;
     if(!validDomCand(d)) return;
     const dd=d.toLowerCase();
-    if(new RegExp("@\\s*"+escRe(dd)+"\\b","i").test(t)) return; // skip email domains
+    if(new RegExp("@\\s*"+escRe(dd)+"\\b","i").test(t)) return;
     urls.add(d);
   });
   const list=[...urls].map(nWeb).filter(Boolean);
@@ -332,7 +337,7 @@ function looksName(line){
   if(isJ(l)) return false;
   if(/^[A-Za-zÄÖÜäöüß ]{2,25}\s*:\s*/.test(l)) return false;
   if(isAddr(l)||isContact(l)) return false;
-  if(TOK.wlRe.some(r=>r.test(l))) return true; // whitelist boost
+  if(TOK.wlRe.some(r=>r.test(l))) return true;
   return /[A-Za-zÄÖÜäöüß]/.test(l);
 }
 
@@ -353,6 +358,21 @@ function splitBlocks(raw){
   push(); return blocks;
 }
 
+/* ===== Fließtext split ===== */
+function flowSplit(raw){
+  let t=norm(raw); if(!t) return "";
+  // Heuristic separators: email/phone/zip+city end markers or "Tel|Email|Web" labels -> enforce paragraph breaks.
+  const reps=[
+    [/(\b\d{5}\s+[A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß\- ]{1,}\b)(?=\s+[A-ZÄÖÜ][^.\n]{2,60}\b(?:GmbH|UG|e\.K\.|KG|GbR|OHG|AG|Praxis|Bau|Elektro|Service|Studio|Hotel|Kanzlei)\b)/g,"$1\n\n"],
+    [/(\b(?:tel\.?|telefon|phone|mobil|fax)\s*[:\-]?\s*[+\d][\d \-\/]{6,})(?=\s+[A-ZÄÖÜ])/ig,"$1\n\n"],
+    [/(\b[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,24}\b)(?=\s+[A-ZÄÖÜ])/ig,"$1\n\n"],
+    [/(\bhttps?:\/\/[^\s<>"')]+\b)(?=\s+[A-ZÄÖÜ])/ig,"$1\n\n"],
+    [/(\bwww\.[^\s<>"')]+\b)(?=\s+[A-ZÄÖÜ])/ig,"$1\n\n"],
+  ];
+  for(const [re,rep] of reps) t=t.replace(re,rep);
+  return t.replace(/\n{3,}/g,"\n\n").trim();
+}
+
 /* ===== Absätze normalisieren ===== */
 function normalizeParagraphs(raw){
   const t=norm(raw); if(!t) return "";
@@ -363,7 +383,6 @@ function normalizeParagraphs(raw){
     const ln=lines[i].trim();
     if(!ln){ out.push(""); cur=[]; continue; }
     if(SEP.test(ln)){ out.push("",ln,""); cur=[]; continue; }
-    // if new likely company line and current chunk already has signals => insert blank line
     if(looksName(ln) && cur.length && core(cur) && out[out.length-1]!=="") out.push("");
     out.push(lines[i]); cur.push(ln);
   }
@@ -410,12 +429,16 @@ function inferStreet(lines, zip, city){
   return {street:"",used:""};
 }
 
-/* ===== Quality score ===== */
-function quality(r){
-  const hasName=!!r.company_name, hasAddr=!!((r.zip&&r.city)||r.street);
-  const hasC=(r.phone||r.email||r.website)?1:0;
-  if(hasName && hasAddr && hasC) return "g";
-  if((hasName && hasC) || (hasAddr && hasC) || (hasName && hasAddr)) return "y";
+/* ===== Strict Ampel =====
+Green only if ALL fields filled (company_name,street,zip,city,phone,email,website)
+Yellow if 1-2 missing
+Red if >=3 missing
+*/
+function qualityStrict(r){
+  const need=["company_name","street","zip","city","phone","email","website"];
+  let miss=0; for(const k of need) if(!r[k]) miss++;
+  if(miss===0) return "g";
+  if(miss<=2) return "y";
   return "r";
 }
 
@@ -486,7 +509,7 @@ function extract(block){
   }
 
   const r={company_name:name,street,zip,city,phone,email,website,source:SRC,notes:clamp(notes.join(", "))};
-  r._q=quality(r);
+  r._q=qualityStrict(r);
   return {r,d:{raw:block,used:{nameLine:nameUsed,addressLine:addrUsed,phoneLine,emailLine,websiteLine:webLine}}};
 }
 
@@ -503,7 +526,7 @@ function merge(a,b){
   const s=new Set();
   [a.notes,b.notes].forEach(n=>(n||"").split(",").map(x=>x.trim()).filter(Boolean).forEach(x=>s.add(x)));
   s.add("merged"); o.notes=clamp([...s].join(", "));
-  o._q=quality(o);
+  o._q=qualityStrict(o);
   return o;
 }
 function dedupe(rows){
@@ -516,25 +539,21 @@ function parseAll(raw){
   const blocks=splitBlocks(raw);
   const rows=[], dbg=[]; let skipped=0;
   for(const b of blocks){ const out=extract(b); if(out){rows.push(out.r); dbg.push(out);} else skipped++; }
-  const ded=dedupe(rows).sort((a,b)=>score(b)-score(a));
+  const ded=dedupe(rows);
   return {blocks:blocks.length, extracted:rows.length, deduped:ded.length, skipped, ded, dbg};
 }
 
 /* ===== Duplicate warnings (preview only) ===== */
 function normNameCity(r){
   const name=nk(r.company_name), city=nk(r.city), zip=nk(r.zip);
-  const keep=(name+" "+city+" "+zip).trim();
-  return keep;
+  return (name+" "+city+" "+zip).trim();
 }
 function dupFlags(dbg){
   const byPhone=new Map(), byDom=new Map(), byNC=new Map();
   const flags=new Array(dbg.length).fill(false);
-  const phoneK=r=>nk(r.phone);
-  const domK=r=>nk(dom(r.website));
-  const ncK=r=>normNameCity(r);
   for(let i=0;i<dbg.length;i++){
     const r=dbg[i].r;
-    const p=phoneK(r), d=domK(r), nc=ncK(r);
+    const p=nk(r.phone), d=nk(dom(r.website)), nc=normNameCity(r);
     if(p){ (byPhone.get(p)||byPhone.set(p,[]).get(p)).push(i); }
     if(d){ (byDom.get(d)||byDom.set(d,[]).get(d)).push(i); }
     if(nc && r.company_name && (r.city||r.zip)){ (byNC.get(nc)||byNC.set(nc,[]).get(nc)).push(i); }
@@ -547,35 +566,33 @@ function dupFlags(dbg){
 /* ===== Session Save/Load (fixes by key) ===== */
 function buildFixes(dbg){
   const fixes={};
-  for(const it of dbg){
-    const k=recKey(it.r);
-    fixes[k]={...it.r}; // includes any manual edits
-  }
+  for(const it of dbg) fixes[recKey(it.r)]={...it.r};
   return fixes;
 }
 function applyFixes(result, fixes){
   if(!fixes) return result;
   for(const it of result.dbg){
     const k=recKey(it.r);
-    if(fixes[k]){ // overwrite fields (but keep debug raw/used)
+    if(fixes[k]){
       const src=fixes[k];
       for(const f of H.concat(["_q"])) if(src[f]!==undefined) it.r[f]=src[f];
-      it.r._q=quality(it.r);
+      it.r._q=qualityStrict(it.r);
     }
   }
-  result.ded=dedupe(result.dbg.map(x=>x.r)).sort((a,b)=>score(b)-score(a));
+  result.ded=dedupe(result.dbg.map(x=>x.r));
   result.deduped=result.ded.length;
   return result;
 }
 
 /* ===== UI ===== */
-const inEl=$("in"), maxEl=$("max"), zipEl=$("zip");
+const inEl=$("in"), maxEl=$("max"), zipEl=$("zip"), sortEl=$("sort");
 const go=$("go"), exp=$("exp"), cpy=$("cpy"), clr=$("clr");
 const st=$("st"), hint=$("hint"), th=$("th"), tb=$("tb");
 const err=$("err"), errMsg=$("errMsg");
 const bd=$("bd"), x=$("x"), x2=$("x2"), ms=$("ms"), kv=$("kv"), bp=$("bp"), cr=$("cr"), saveFix=$("saveFix");
 const normBtn=$("normBtn"), saveBtn=$("saveBtn"), loadFile=$("loadFile"), autoPill=$("autoPill");
-const fltOn=$("fltOn"), fltE=$("fltE"), fltP=$("fltP"), fltS=$("fltS");
+const fltOn=$("fltOn"), fltE=$("fltE"), fltP=$("fltP"), fltS=$("fltS"), onlyG=$("onlyG");
+const flowOn=$("flowOn");
 
 let last=null, sel=null, selIdx=-1, debT=0, lastAutoAt=0, lastSessionFixes=null;
 
@@ -588,51 +605,69 @@ function renderStats(r){
 }
 function renderHint(r){
   const pill=zipEl.value==="excel_text"?`<span class="pill"><span class="dot y"></span>PLZ: Excel-safe</span>`:`<span class="pill"><span class="dot y"></span>PLZ: Plain</span>`;
-  hint.innerHTML=r?.dbg?.length?`<span class="ok">OK</span> – ${r.dbg.length} Zeilen (Preview). Export: ${r.deduped} Datensätze. ${pill}`:`<span class="warn">Keine Datensätze.</span>`;
+  hint.innerHTML=r?.dbg?.length?`<span class="ok">OK</span> – ${r.dbg.length} Blöcke, Preview zeigt gefilterte/sortierte Zeilen. Export: ${r.deduped} Datensätze. ${pill}`:`<span class="warn">Keine Datensätze.</span>`;
 }
 
+function baseDbg(){ return last?.dbg?last.dbg.slice():[]; }
+
 function filteredDbg(){
-  if(!last?.dbg) return [];
-  if(!fltOn.checked) return last.dbg;
-  const needE=fltE.checked, needP=fltP.checked, needS=fltS.checked;
-  return last.dbg.filter(it=>{
-    const r=it.r;
-    const missE=needE && !r.email;
-    const missP=needP && !r.phone;
-    const missS=needS && !r.street;
-    return missE||missP||missS;
-  });
+  let dbg=baseDbg();
+  if(!dbg.length) return dbg;
+
+  if(fltOn.checked){
+    const needE=fltE.checked, needP=fltP.checked, needS=fltS.checked;
+    dbg=dbg.filter(it=>{
+      const r=it.r;
+      return (needE && !r.email)||(needP && !r.phone)||(needS && !r.street);
+    });
+  }
+  if(onlyG.checked) dbg=dbg.filter(it=>(it.r._q||qualityStrict(it.r))==="g");
+  return dbg;
+}
+
+function sortDbg(dbg){
+  const mode=sortEl.value;
+  const dup=dupFlags(dbg);
+  const qv=q=>q==="g"?2:q==="y"?1:0;
+  const name=r=>(nk(r.company_name)||"");
+  const city=r=>(nk(r.city)||"");
+  const by=(fn,dir=1)=>dbg.sort((a,b)=>dir*fn(a,b));
+  if(mode==="dup") return by((A,B)=>(dup[dbg.indexOf(B)]?1:0)-(dup[dbg.indexOf(A)]?1:0),1);
+  if(mode==="name") return by((A,B)=>name(A.r).localeCompare(name(B.r))||city(A.r).localeCompare(city(B.r)),1);
+  if(mode==="city") return by((A,B)=>city(A.r).localeCompare(city(B.r))||name(A.r).localeCompare(name(B.r)),1);
+  if(mode==="qasc") return by((A,B)=>qv(A.r._q||qualityStrict(A.r))-qv(B.r._q||qualityStrict(B.r)),1);
+  return by((A,B)=>qv(B.r._q||qualityStrict(B.r))-qv(A.r._q||qualityStrict(A.r)),1); // qdesc default
 }
 
 function renderTable(){
-  const dbg=filteredDbg();
-  const dup=dupFlags(dbg);
+  let dbg=filteredDbg();
   const mode=zipEl.value;
 
+  dbg=sortDbg(dbg);
+
+  const dup=dupFlags(dbg);
   const cols=["q","dup"].concat(H);
   th.innerHTML=cols.map(h=>`<th>${h}</th>`).join("");
   tb.innerHTML="";
 
-  const n=Math.min(120, dbg.length);
+  const n=Math.min(140, dbg.length);
   for(let i=0;i<n;i++){
     const it=dbg[i], r=it.r;
     const tr=document.createElement("tr");
-    const q=r._q||quality(r);
+    const q=r._q||qualityStrict(r);
     const qCell=`<span class="pill"><span class="dot ${q}"></span>${q==="g"?"Grün":q==="y"?"Gelb":"Rot"}</span>`;
     const dCell=dup[i]?`<span class="bad">⚠️ ähnlich</span>`:`<span class="muted">—</span>`;
-    const rowHtml=[`<td>${qCell}</td>`,`<td>${dCell}</td>`].concat(H.map(h=>{
+    tr.innerHTML=[`<td>${qCell}</td>`,`<td>${dCell}</td>`].concat(H.map(h=>{
       let v=r[h]||""; if(h==="zip") v=zipFmt(v,mode);
       return `<td title="${esc(String(v))}">${esc(String(v))}</td>`;
     })).join("");
-    tr.innerHTML=rowHtml;
-    tr.addEventListener("click",()=>openDbgFromFiltered(i));
+    tr.addEventListener("click",()=>openDbgFromView(it));
     tb.appendChild(tr);
   }
 }
 
-function openDbgFromFiltered(i){
-  const dbg=filteredDbg();
-  const it=dbg[i]; if(!it) return;
+function openDbgFromView(it){
+  if(!it||!last?.dbg) return;
   sel=it; selIdx=last.dbg.indexOf(it);
   openDbg(selIdx);
 }
@@ -643,7 +678,6 @@ function openDbg(idx){
   const r=sel.r, u=sel.d.used||{}, mode=zipEl.value;
   ms.textContent=r.company_name?`– ${r.company_name}`:`– (Name leer)`;
 
-  // FIX-MODE inputs (editable)
   const fields=[
     ["company_name","Firma",r.company_name],
     ["street","Straße",r.street],
@@ -681,17 +715,13 @@ saveFix.addEventListener("click",()=>{
   for(const inp of inputs){
     const k=inp.dataset.k;
     let v=inp.value||"";
-    if(k==="zip"){ // strip excel prefix if user kept it
-      v=v.trim(); if(v.startsWith("'")) v=v.slice(1);
-      v=v.replace(/[^\d]/g,"").slice(0,5);
-    }
+    if(k==="zip"){ v=v.trim(); if(v.startsWith("'")) v=v.slice(1); v=v.replace(/[^\d]/g,"").slice(0,5); }
     if(k==="email") v=cleanEmail(v);
     r[k]=v;
   }
-  r._q=quality(r);
+  r._q=qualityStrict(r);
 
-  // Rebuild deduped + refresh stats/table/hint
-  last.ded=dedupe(last.dbg.map(x=>x.r)).sort((a,b)=>score(b)-score(a));
+  last.ded=dedupe(last.dbg.map(x=>x.r));
   last.deduped=last.ded.length;
   renderStats(last); renderTable(); renderHint(last);
   exp.disabled=!last.ded.length; cpy.disabled=!last.ded.length;
@@ -709,25 +739,30 @@ cr.addEventListener("click", async ()=>{
 function analyze(source){
   TOK=mkTokenRes();
   clearErr();
-  last=parseAll(inEl.value||"");
+  let raw=inEl.value||"";
+  if(flowOn.checked) raw=flowSplit(raw);
+  last=parseAll(raw);
   if(lastSessionFixes) last=applyFixes(last, lastSessionFixes);
   renderStats(last); renderTable(); renderHint(last);
   exp.disabled=!last.ded.length; cpy.disabled=!last.ded.length;
-  if(source==="auto"){ autoPill.innerHTML=`<span class="dot g"></span>Auto`; lastAutoAt=now(); setTimeout(()=>{if(now()-lastAutoAt>800) autoPill.innerHTML=`<span class="dot y"></span>Auto`;},850); }
+  if(source==="auto"){
+    autoPill.innerHTML=`<span class="dot g"></span>Auto`; lastAutoAt=now();
+    setTimeout(()=>{if(now()-lastAutoAt>800) autoPill.innerHTML=`<span class="dot y"></span>Auto`;},850);
+  }
 }
-
 go.addEventListener("click",()=>{ try{analyze("btn");}catch(e){showErr(e);} });
 
 /* Auto-Analyse debounce (700ms) */
-inEl.addEventListener("input",()=>{
+function armAuto(){
   clearTimeout(debT);
   debT=setTimeout(()=>{ try{analyze("auto");}catch(e){showErr(e);} },700);
-});
-$("bl").addEventListener("input",()=>{ clearTimeout(debT); debT=setTimeout(()=>{try{analyze("auto");}catch(e){showErr(e);} },700); });
-$("wl").addEventListener("input",()=>{ clearTimeout(debT); debT=setTimeout(()=>{try{analyze("auto");}catch(e){showErr(e);} },700); });
+}
+inEl.addEventListener("input",armAuto);
+$("bl").addEventListener("input",armAuto);
+$("wl").addEventListener("input",armAuto);
 
-/* Filters rerender only */
-[fltOn,fltE,fltP,fltS,zipEl].forEach(el=>el.addEventListener("change",()=>{ if(last){renderTable(); renderHint(last);} }));
+/* Rerender only */
+[fltOn,fltE,fltP,fltS,zipEl,sortEl,onlyG,flowOn].forEach(el=>el.addEventListener("change",()=>{ if(last){renderTable(); renderHint(last);} }));
 
 exp.addEventListener("click",()=>{
   try{
@@ -752,7 +787,9 @@ clr.addEventListener("click",()=>{
 
 /* Absätze normalisieren */
 normBtn.addEventListener("click",()=>{
-  inEl.value=normalizeParagraphs(inEl.value||"");
+  let t=inEl.value||"";
+  if(flowOn.checked) t=flowSplit(t);
+  inEl.value=normalizeParagraphs(t);
   try{analyze("btn");}catch(e){showErr(e);}
 });
 
@@ -765,9 +802,9 @@ function dlJson(name,obj){
 }
 saveBtn.addEventListener("click",()=>{
   const session={
-    v:1, ts:new Date().toISOString(),
+    v:2, ts:new Date().toISOString(),
     input: inEl.value||"",
-    settings:{max:maxEl.value, zip:zipEl.value, bl:$("bl").value||"", wl:$("wl").value||""},
+    settings:{max:maxEl.value, zip:zipEl.value, bl:$("bl").value||"", wl:$("wl").value||"", flow:flowOn.checked, sort:sortEl.value, onlyG:onlyG.checked},
     fixes: last?.dbg?buildFixes(last.dbg):{}
   };
   dlJson(`lead_session_${Date.now()}.json`, session);
@@ -775,13 +812,15 @@ saveBtn.addEventListener("click",()=>{
 loadFile.addEventListener("change",async ()=>{
   const f=loadFile.files?.[0]; if(!f) return;
   try{
-    const txt=await f.text();
-    const s=JSON.parse(txt);
+    const s=JSON.parse(await f.text());
     inEl.value=s.input||"";
     maxEl.value=s.settings?.max||"5000";
     zipEl.value=s.settings?.zip||"excel_text";
     $("bl").value=s.settings?.bl||"";
     $("wl").value=s.settings?.wl||"";
+    flowOn.checked=!!s.settings?.flow;
+    sortEl.value=s.settings?.sort||"qdesc";
+    onlyG.checked=!!s.settings?.onlyG;
     lastSessionFixes=s.fixes||null;
     analyze("btn");
   }catch(e){showErr(e);}
