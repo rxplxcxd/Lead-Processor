@@ -64,7 +64,7 @@
   <div class="row small">
     <div class="panel" style="width:100%">
       <div><b>CSV Spalten:</b> <span class="mono">company_name,street,zip,city,phone,email,website,source,notes</span></div>
-      <div class="small">Strenger Filter: Müll wird konsequent ignoriert. Records nur bei ausreichender Datenqualität.</div>
+      <div class="small">Robust gegen Müll: Zero-Width, Sterne, Ratings, komische Unicode-Trenner. Records nur bei sinnvoller Qualität.</div>
     </div>
   </div>
 
@@ -120,13 +120,95 @@
       "youtube.com","youtu.be","xing.com","twitter.com","x.com","pinterest.com"
     ];
 
-    // Marker & harte Trenner
     const BLOCK_START_MARKERS = [
       /^google\s*maps$/i, /^apple\s*maps$/i, /^impressum$/i, /^kontakt$/i, /^contact$/i
     ];
     const HARD_SEPARATOR_LINE = /^(\-{3,}|={3,}|\*{3,}|•{3,}|_{3,})$/;
 
-    // KRITISCHE Müllzeilen (die in deinen CSVs als "Firma" auftauchten)
+    // Robustness: remove common invisible chars + normalize unicode punctuation
+    function sanitizeText(raw) {
+      return (raw || "")
+        // Zero-width + BOM + directional marks
+        .replace(/[\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, "")
+        // normalize weird dashes to hyphen
+        .replace(/[\u2010-\u2015]/g, "-")
+        // normalize bullet variants to "•"
+        .replace(/[\u2022\u25CF\u25CB\u25A0\u25AA]/g, "•")
+        // remove rating stars (keep text)
+        .replace(/[★☆]+/g, "")
+        // collapse multiple spaces
+        .replace(/[ \t]+/g, " ");
+    }
+
+    function normalizeSpaces(s) {
+      const cleaned = sanitizeText(s);
+      return cleaned
+        .replace(/\u00A0/g, " ")
+        .replace(/\s+\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+    }
+
+    function toLowerSafe(s) { return (s || "").toLowerCase(); }
+
+    function clampNotes(s) {
+      const t = (s || "").trim();
+      if (t.length <= DEFAULT_NOTES_LIMIT) return t;
+      return t.slice(0, DEFAULT_NOTES_LIMIT - 1).trim() + "…";
+    }
+
+    function stripLabels(s) {
+      return (s || "")
+        .replace(/^\s*(tel\.?|telefon|phone|mobil|fax)\s*[:\-]\s*/i, "")
+        .replace(/^\s*(e-?mail)\s*[:\-]\s*/i, "")
+        .replace(/^\s*(web(site)?|internet|url)\s*[:\-]\s*/i, "")
+        .trim();
+    }
+
+    // Strip inline junk tail: " ... Bewertungen: (33)" etc.
+    function stripInlineNoise(line) {
+      let l = (line || "").trim();
+      // remove "Bewertungen: (33)" or similar tails
+      l = l.replace(/\bBewertungen?\b\s*:?.*$/i, "").trim();
+      // remove "Route • Speichern • ..." tails
+      l = l.replace(/\b(Route|Speichern|Teilen|In der Nähe)\b.*$/i, "").trim();
+      // remove "Öffnungszeiten: ..." tails
+      l = l.replace(/\bÖffnungszeiten?\b\s*:?.*$/i, "").trim();
+      return l;
+    }
+
+    function normalizePhone(raw) {
+      if (!raw) return "";
+      let s = stripLabels(stripInlineNoise(raw));
+      s = s.replace(/[^\d +\/\-]/g, "");
+      s = s.replace(/[ ]{2,}/g, " ").trim();
+      return s;
+    }
+
+    function normalizeWebsite(raw) {
+      if (!raw) return "";
+      let s = stripLabels(stripInlineNoise(raw)).trim();
+      s = s.replace(/^[\(\[\{<]+/, "").replace(/[\)\]\}>.,;!]+$/, "");
+      s = s.replace(/(\?.*)$/, "");
+      return s;
+    }
+
+    function getDomain(url) {
+      if (!url) return "";
+      let u = url.trim();
+      u = u.replace(/^https?:\/\//i, "");
+      u = u.replace(/^www\./i, "");
+      u = u.split("/")[0];
+      return u.toLowerCase();
+    }
+
+    function isSocialDomain(url) {
+      const d = getDomain(url);
+      if (!d) return false;
+      return SOCIAL_HOST_BLACKLIST.some(host => d === host || d.endsWith("." + host));
+    }
+
+    // More strict junk patterns
     const JUNK_LINE_PATTERNS = [
       /^bewertungen?\b/i,
       /^öffnungszeiten?\b/i,
@@ -147,7 +229,6 @@
       /^navigation\b/i,
     ];
 
-    // allgemeine Noise Patterns (Footer, Menüs etc.)
     const NOISE_PATTERNS = [
       /cookie(s)?/i, /consent/i, /datenschutz/i, /privacy/i,
       /\b(alle\s*rechte\s*vorbehalten|copyright|©)\b/i,
@@ -165,75 +246,20 @@
       /\bvertretungsberechtigt\b/i, /\bgeschäftsführer\b/i, /\binhaber\b/i
     ];
 
-    function normalizeSpaces(s) {
-      return (s || "")
-        .replace(/\u00A0/g, " ")
-        .replace(/[ \t]+/g, " ")
-        .replace(/\s+\n/g, "\n")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
-    }
-    function toLowerSafe(s) { return (s || "").toLowerCase(); }
-    function clampNotes(s) {
-      const t = (s || "").trim();
-      if (t.length <= DEFAULT_NOTES_LIMIT) return t;
-      return t.slice(0, DEFAULT_NOTES_LIMIT - 1).trim() + "…";
-    }
-
-    function stripLabels(s) {
-      return (s || "")
-        .replace(/^\s*(tel\.?|telefon|phone|mobil|fax)\s*[:\-]\s*/i, "")
-        .replace(/^\s*(e-?mail)\s*[:\-]\s*/i, "")
-        .replace(/^\s*(web(site)?|internet|url)\s*[:\-]\s*/i, "")
-        .trim();
-    }
-    function normalizePhone(raw) {
-      if (!raw) return "";
-      let s = stripLabels(raw);
-      s = s.replace(/[^\d +\/\-]/g, "");
-      s = s.replace(/[ ]{2,}/g, " ").trim();
-      return s;
-    }
-
-    function normalizeWebsite(raw) {
-      if (!raw) return "";
-      let s = stripLabels(raw).trim();
-      s = s.replace(/^[\(\[\{<]+/, "").replace(/[\)\]\}>.,;!]+$/, "");
-      s = s.replace(/(\?.*)$/, "");
-      return s;
-    }
-
-    function getDomain(url) {
-      if (!url) return "";
-      let u = url.trim();
-      u = u.replace(/^https?:\/\//i, "");
-      u = u.replace(/^www\./i, "");
-      u = u.split("/")[0];
-      return u.toLowerCase();
-    }
-    function isSocialDomain(url) {
-      const d = getDomain(url);
-      if (!d) return false;
-      return SOCIAL_HOST_BLACKLIST.some(host => d === host || d.endsWith("." + host));
-    }
-
     function isJunkLine(line) {
-      const l = (line || "").trim();
+      const l0 = sanitizeText(line || "").trim();
+      if (!l0) return true;
+
+      const l = stripInlineNoise(l0);
       if (!l) return true;
+
       if (l.length <= 2) return true;
       if (/^[\-\–\—\•\|\/\\\s]+$/.test(l)) return true;
-
-      // harte Junk-Starts (Bewertungen/Öffnungszeiten/USt-Id/etc.)
       if (JUNK_LINE_PATTERNS.some(re => re.test(l))) return true;
 
-      // typische kurze Menu-/Footerzeilen
       for (const re of NOISE_PATTERNS) {
         if (re.test(l) && l.length < 180) return true;
       }
-
-      // Cookie accept/decline
-      if (/(akzeptieren|zustimmen|ablehnen|einstellungen)/i.test(l) && /cookie/i.test(l)) return true;
-
       return false;
     }
 
@@ -244,7 +270,6 @@
     }
 
     function isValidDomainCandidate(d) {
-      // block super short junk like "e.k" or one-letter tlds
       const dom = d.toLowerCase().replace(/^[.]+|[.]+$/g, "");
       if (dom.length < 6) return false;
       if (!dom.includes(".")) return false;
@@ -252,8 +277,7 @@
       const tld = parts[parts.length - 1];
       if (tld.length < 2 || tld.length > 24) return false;
       if (!/^[a-z]{2,24}$/.test(tld)) return false;
-      // block typical legal suffix tokens that show up as "domains"
-      if (dom === "e.k" || dom === "e.k." || dom.endsWith(".ek")) return false;
+      if (dom === "e.k" || dom.endsWith(".ek")) return false;
       return true;
     }
 
@@ -267,7 +291,6 @@
       const re2 = /\bwww\.[^\s<>"')]+\b/gi;
       (t.match(re2) || []).forEach(u => urls.add(u));
 
-      // bare domains (strenger)
       const re3 = /\b(?![A-Z0-9._%+-]+@)([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/gi;
       (t.match(re3) || []).forEach(d => {
         if (/\.(png|jpg|jpeg|gif|svg|pdf|css|js)$/i.test(d)) return;
@@ -276,13 +299,13 @@
         urls.add(d);
       });
 
-      // dedupe by domain
       const list = Array.from(urls).map(normalizeWebsite).filter(Boolean);
+
+      // dedupe by domain, pick best form
       const byDomain = new Map();
       for (const u of list) {
         const dom = getDomain(u);
         if (!dom) continue;
-        // prefer https:// over bare
         const prev = byDomain.get(dom);
         if (!prev) byDomain.set(dom, u);
         else {
@@ -294,31 +317,57 @@
     }
 
     function findZipCity(text) {
+      const t = stripInlineNoise(sanitizeText(text || ""));
       const re = /\b(\d{5})\s+([A-Za-zÀ-ÖØ-öø-ÿÄÖÜäöüß\.\- ]{2,})\b/g;
       let m;
-      while ((m = re.exec(text)) !== null) {
+      while ((m = re.exec(t)) !== null) {
         const zip = m[1];
         let city = (m[2] || "").trim();
         city = city.split("\n")[0].trim();
-        city = city.replace(/\b(Tel|Telefon|Phone|E-Mail|Email|Web|Website|Bewertungen|Route|Öffnungszeiten)\b.*$/i, "").trim();
+        city = city.replace(/\b(Tel|Telefon|Phone|E-Mail|Email|Web|Website|Route|Öffnungszeiten)\b.*$/i, "").trim();
         if (city.length >= 2 && !/\d/.test(city)) return { zip, city };
       }
       return { zip: "", city: "" };
     }
 
+    // Fallback extractor: "Street, 08056 City"
+    function parseStreetZipCityLine(line) {
+      const l = stripInlineNoise(sanitizeText(line || "")).trim();
+      const m = l.match(/^(.+?),\s*(\d{5})\s+(.+)$/);
+      if (!m) return null;
+      const street = m[1].trim();
+      const zip = m[2].trim();
+      const city = m[3].trim().replace(/\b(Tel|Telefon|Phone|E-Mail|Email|Web|Website)\b.*$/i, "").trim();
+      if (!street || !zip || !city) return null;
+      return { street, zip, city };
+    }
+
+    function findStreetZipCity(lines) {
+      // Try to find a combined line first (most robust)
+      for (const raw of lines) {
+        if (isJunkLine(raw)) continue;
+        const parsed = parseStreetZipCityLine(raw);
+        if (parsed && /[A-Za-zÄÖÜäöüß]/.test(parsed.street)) return parsed;
+      }
+      return null;
+    }
+
     function findStreet(text) {
       const lines = (text || "").split(/\n/).map(l => l.trim()).filter(Boolean);
+
+      // 1) robust combined line extractor
+      const combined = findStreetZipCity(lines);
+      if (combined) return combined.street;
+
+      // 2) classic street suffix match
       const streetRe = /\b(straße|str\.|weg|platz|allee|gasse|ring|damm|ufer|promenade|chaussee|berg|hof|plan|markt)\b/i;
       const houseNoRe = /\b\d+[a-zA-Z]?\b/;
 
       for (const line of lines) {
-        const l = line.trim();
-        if (l.length < 6 || l.length > 140) continue;
+        const l = stripInlineNoise(sanitizeText(line)).trim();
+        if (!l) continue;
         if (isJunkLine(l)) continue;
-
-        if (/,/.test(l) && streetRe.test(l) && houseNoRe.test(l)) {
-          return l.split(",")[0].trim().replace(/^\s*(adresse|anschrift)\s*[:\-]\s*/i, "");
-        }
+        if (l.length < 6 || l.length > 140) continue;
         if (streetRe.test(l) && houseNoRe.test(l) && !/(register|ust|gericht|hrb|hra|steuer)/i.test(l)) {
           return l.replace(/^\s*(adresse|anschrift)\s*[:\-]\s*/i, "").trim();
         }
@@ -327,7 +376,7 @@
     }
 
     function findPhones(text) {
-      const t = text || "";
+      const t = stripInlineNoise(sanitizeText(text || ""));
       const candidates = new Set();
 
       const reLabel = /(?:tel\.?|telefon|phone|mobil|fax)\s*[:\-]?\s*([+\d][\d \-\/]{6,})/gi;
@@ -348,15 +397,16 @@
     }
 
     function isAddressLike(line) {
-      const l = (line || "").trim();
+      const l = stripInlineNoise(sanitizeText(line || "")).trim();
       if (!l) return false;
       if (/\d{5}\s+\S+/.test(l)) return true;
       if (/(straße|str\.|weg|platz|allee|gasse)\b/i.test(l) && /\d/.test(l)) return true;
+      if (parseStreetZipCityLine(l)) return true;
       return false;
     }
 
     function isContactLike(line) {
-      const l = (line || "").trim();
+      const l = stripInlineNoise(sanitizeText(line || "")).trim();
       if (!l) return false;
       if (/@/.test(l)) return true;
       if (/(tel|telefon|phone|mobil|fax)\b/i.test(l)) return true;
@@ -366,26 +416,18 @@
     }
 
     function looksLikeCompanyName(line) {
-      const l = (line || "").trim();
+      const l = stripInlineNoise(sanitizeText(line || "")).trim();
       if (!l) return false;
       if (l.length < 2 || l.length > 140) return false;
-
       if (BLOCK_START_MARKERS.some(re => re.test(l))) return false;
       if (isJunkLine(l)) return false;
-
-      // keine "Label:"-Zeilen als Name
       if (/^[A-Za-zÄÖÜäöüß ]{2,25}\s*:\s*/.test(l)) return false;
-
       if (isAddressLike(l)) return false;
       if (isContactLike(l)) return false;
-
-      // zu "technisch" oder nur Zahlen
       if (!/[A-Za-zÄÖÜäöüß]/.test(l)) return false;
-
       return true;
     }
 
-    // Segmentierung (zeilenbasiert)
     function splitIntoBlocks(rawText) {
       const text = normalizeSpaces(rawText);
       if (!text) return [];
@@ -422,7 +464,6 @@
           continue;
         }
 
-        // neue Firma, wenn Name-like und bisheriger Block hat bereits Core-Signale
         if (looksLikeCompanyName(line) && cur.length && blockHasCoreSignals(cur)) {
           pushBlock();
         }
@@ -433,9 +474,9 @@
       return blocks;
     }
 
-    // Extraction + Qualitäts-Gate
     function extractFromBlock(blockText) {
-      const lines = (blockText || "").split("\n").map(l => l.trim()).filter(Boolean);
+      const rawLines = (blockText || "").split("\n").map(l => l.trim()).filter(Boolean);
+      const lines = rawLines.map(l => stripInlineNoise(sanitizeText(l))).filter(Boolean);
 
       const keptLines = [];
       let imprintHint = false;
@@ -453,10 +494,23 @@
       const phones = findPhones(keptText);
       const websites = findWebsites(keptText).filter(u => !isSocialDomain(u));
 
-      const { zip, city } = findZipCity(keptText);
-      const street = findStreet(keptText);
+      // Address: prefer combined parsing line if present
+      let street = "";
+      let zip = "";
+      let city = "";
 
-      // Name finden
+      const combined = findStreetZipCity(keptLines);
+      if (combined) {
+        street = combined.street;
+        zip = combined.zip;
+        city = combined.city;
+      } else {
+        const zc = findZipCity(keptText);
+        zip = zc.zip;
+        city = zc.city;
+        street = findStreet(keptText);
+      }
+
       let company_name = "";
       for (const line of keptLines) {
         if (looksLikeCompanyName(line)) { company_name = line; break; }
@@ -466,17 +520,7 @@
       const phone = phones[0] || "";
       const website = websites[0] || "";
 
-      // Qualitäts-Score:
       const hasAddress = Boolean((zip && city) || street);
-      const signalCount =
-        (company_name ? 1 : 0) +
-        (hasAddress ? 1 : 0) +
-        (phone ? 1 : 0) +
-        (email ? 1 : 0) +
-        (website ? 1 : 0);
-
-      // Gate:
-      // - akzeptiere wenn (Address + (Phone/Email/Website)) ODER (Name + (Phone/Email/Website)) ODER (Name + Address)
       const contactCount = (phone ? 1 : 0) + (email ? 1 : 0) + (website ? 1 : 0);
 
       const ok =
@@ -484,10 +528,8 @@
         (company_name && contactCount >= 1) ||
         (company_name && hasAddress);
 
-      // harte Ablehnung: wenn "Name" fehlt und keine Adresse und nur 1 Kontakt-Signal -> Müll
       if (!ok) return null;
 
-      // Notes
       const notes = [];
       if (imprintHint) notes.push("Impressum gefunden");
       if (!company_name) notes.push("Name unklar");
@@ -510,13 +552,13 @@
       };
     }
 
-    // Dedupe
     function normalizeKeyPart(s) {
       return toLowerSafe((s || ""))
         .replace(/[^a-z0-9äöüß]+/gi, " ")
         .replace(/\s+/g, " ")
         .trim();
     }
+
     function recordKey(rec) {
       const dom = normalizeKeyPart(getDomain(rec.website));
       const phone = normalizeKeyPart(rec.phone);
@@ -528,6 +570,7 @@
       if (name) return "n:" + name;
       return "u:" + Math.random().toString(36).slice(2);
     }
+
     function mergeRecords(a, b) {
       const out = { ...a };
       for (const k of HEADER) {
@@ -540,6 +583,7 @@
       out.notes = clampNotes(Array.from(notes).join(", "));
       return out;
     }
+
     function dedupe(records) {
       const map = new Map();
       for (const r of records) {
@@ -560,31 +604,30 @@
       const blocks = splitIntoBlocks(rawText);
       const extracted = [];
       let skipped = 0;
-
       for (const b of blocks) {
         const rec = extractFromBlock(b);
         if (rec) extracted.push(rec);
         else skipped++;
       }
-
       const deduped = dedupe(extracted);
       deduped.sort((a,b) => completenessScore(b) - completenessScore(a));
-
       return { blocksCount: blocks.length, extractedCount: extracted.length, dedupedCount: deduped.length, skippedCount: skipped, records: deduped };
     }
 
-    // CSV helpers (UTF-8 BOM für Excel)
+    // CSV helpers (UTF-8 BOM for Excel)
     function csvEscape(val) {
       const s = (val ?? "").toString();
       if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
       return s;
     }
+
     function formatZipForCSV(zip, mode) {
       const z = (zip || "").trim();
       if (!z) return "";
       if (mode === "excel_text") return "'" + z;
       return z;
     }
+
     function recordsToCSV(records, zipMode) {
       const lines = [HEADER.join(",")];
       for (const r of records) {
@@ -596,8 +639,8 @@
       }
       return lines.join("\n");
     }
+
     function downloadText(filename, content) {
-      // UTF-8 BOM vorne dran -> Excel (auch iOS) erkennt Umlaute
       const withBom = "\uFEFF" + content;
       const blob = new Blob([withBom], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(blob);
@@ -609,6 +652,7 @@
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
+
     function exportBatches(records, maxRowsPerFile, zipMode) {
       const maxRows = Math.max(1, parseInt(maxRowsPerFile, 10) || 500);
       let fileNo = 1;
@@ -619,6 +663,7 @@
         fileNo++;
       }
     }
+
     async function copyToClipboard(text) {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(text);
@@ -697,7 +742,7 @@
         : `<span class="pill">PLZ: Plain</span>`;
       hintEl.innerHTML = recordsCount
         ? `<span class="ok">OK</span> – ${recordsCount} Datensätze. ${zipMode} <span class="small">Preview max. 80 Zeilen.</span>`
-        : `<span class="warn">Keine Datensätze.</span> <span class="small">Parser ist jetzt strenger – Müll wird bewusst verworfen.</span>`;
+        : `<span class="warn">Keine Datensätze.</span>`;
     }
 
     analyzeBtn.addEventListener("click", () => {
