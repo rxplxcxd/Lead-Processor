@@ -58,7 +58,6 @@
     }
     .right { margin-left: auto; }
 
-    /* Debug modal */
     .modalBackdrop {
       display:none;
       position: fixed;
@@ -119,7 +118,6 @@
       gap: 8px;
       align-items:center;
     }
-    .blockBox .blockHeader .small { opacity: .85; }
     .blockBox pre {
       margin: 0;
       padding: 10px;
@@ -143,7 +141,6 @@
       align-items:center;
       justify-content:flex-end;
     }
-    .ghostBtn { opacity: .95; }
   </style>
 </head>
 <body>
@@ -152,7 +149,7 @@
   <div class="row small">
     <div class="panel" style="width:100%">
       <div><b>CSV Spalten:</b> <span class="mono">company_name,street,zip,city,phone,email,website,source,notes</span></div>
-      <div class="small">Debug: Tippe in der Vorschau-Tabelle auf eine Zeile → zeigt den Original-Block + markiert, was erkannt wurde.</div>
+      <div class="small">Fixes: Street wird aus Nachbarzeilen gezogen (PLZ/Ort → Straße davor), Website-Line Picker ist korrekt, Email-Domains zählen nicht als Websites.</div>
     </div>
   </div>
 
@@ -193,20 +190,16 @@
           </table>
         </div>
       </div>
-      <div class="small" style="margin-top:8px; opacity:.75">
-        Tipp: Wenn bei einem Lead z.B. Straße/Email fehlt → tippe die Zeile an, dann siehst du im Debug-Fenster, welche Zeile der Parser genutzt hat (oder warum nicht).
-      </div>
     </div>
   </div>
 
-  <!-- Debug Modal -->
   <div id="modalBackdrop" class="modalBackdrop" role="dialog" aria-modal="true">
     <div class="modal">
       <div class="modalHeader">
         <div class="title">Debug – Datensatz</div>
         <div id="modalSub" class="small"></div>
         <div class="spacer"></div>
-        <button id="modalClose" class="ghostBtn">Schließen</button>
+        <button id="modalClose">Schließen</button>
       </div>
       <div class="modalBody">
         <div class="kv" id="kvBox"></div>
@@ -219,7 +212,7 @@
       </div>
       <div class="modalFooter">
         <button id="copyRowBtn">Zeile als CSV kopieren</button>
-        <button id="modalClose2" class="ghostBtn">Schließen</button>
+        <button id="modalClose2">Schließen</button>
       </div>
     </div>
   </div>
@@ -359,7 +352,7 @@ function isSocialDomain(url) {
   return SOCIAL_HOST_BLACKLIST.some(host => d === host || d.endsWith("." + host));
 }
 
-// Email: tolerant (spaces + at/dot)
+// Email
 function normalizeEmailCandidate(s){
   if(!s) return "";
   let x = sanitizeText(s);
@@ -402,6 +395,7 @@ function findEmails(text){
   return valid;
 }
 
+// Websites: IMPORTANT fix: do NOT count domains that appear in emails
 function isValidDomainCandidate(d) {
   const dom = d.toLowerCase().replace(/^[.]+|[.]+$/g, "");
   if (dom.length < 6) return false;
@@ -413,6 +407,8 @@ function isValidDomainCandidate(d) {
   if (dom === "e.k" || dom.endsWith(".ek")) return false;
   return true;
 }
+
+function escapeRegex(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
 function findWebsites(text) {
   const t = sanitizeText(text || "");
@@ -429,11 +425,18 @@ function findWebsites(text) {
     if (/\.(png|jpg|jpeg|gif|svg|pdf|css|js)$/i.test(d)) return;
     if (/(cookie|privacy|datenschutz|impressum)/i.test(d)) return;
     if (!isValidDomainCandidate(d)) return;
+
+    // NEW: if domain occurs as part of an email -> skip
+    const dom = d.toLowerCase();
+    const emailDomRe = new RegExp("@\\s*" + escapeRegex(dom) + "\\b", "i");
+    if (emailDomRe.test(t)) return;
+
     urls.add(d);
   });
 
   const list = Array.from(urls).map(normalizeWebsite).filter(Boolean);
 
+  // dedupe by domain
   const byDomain = new Map();
   for (const u of list) {
     const dom = getDomain(u);
@@ -448,6 +451,16 @@ function findWebsites(text) {
   return Array.from(byDomain.values());
 }
 
+function uniqueDomains(urls){
+  const s = new Set();
+  for (const u of (urls||[])) {
+    const d = getDomain(u);
+    if (d) s.add(d);
+  }
+  return Array.from(s);
+}
+
+// Address
 function findZipCity(text) {
   const t = stripInlineNoise(sanitizeText(text || ""));
   const re = /\b(\d{5})\s+([A-Za-zÀ-ÖØ-öø-ÿÄÖÜäöüß\.\- ]{2,})\b/g;
@@ -473,11 +486,31 @@ function parseStreetZipCityLine(line) {
   return { street, zip, city };
 }
 
+function looksStreetLine(line){
+  const l = stripInlineNoise(sanitizeText(line||"")).trim();
+  if (!l) return false;
+  if (isJunkLine(l)) return false;
+  // House number required
+  if (!/\b\d+[a-zA-Z]?\b/.test(l)) return false;
+
+  // Wide suffix set + common “Str” variants
+  const streetRe = /\b(straße|strasse|str\.?|str|weg|platz|allee|gasse|ring|damm|ufer|promenade|chaussee|berg|hof|plan|markt|zeile|gürtel|kai|brücke|bruecke|steig|pfad)\b/i;
+
+  // If suffix known => good
+  if (streetRe.test(l)) return true;
+
+  // Fallback: line with house number and <= 8 words (typical street line)
+  const words = l.split(/\s+/).filter(Boolean);
+  if (words.length <= 8) return true;
+
+  return false;
+}
+
 function findStreetZipCity(lines) {
   for (const raw of lines) {
     if (isJunkLine(raw)) continue;
     const parsed = parseStreetZipCityLine(raw);
-    if (parsed && /[A-Za-zÄÖÜäöüß]/.test(parsed.street)) return parsed;
+    if (parsed && /[A-Za-zÄÖÜäöüß]/.test(parsed.street)) return { ...parsed, _line: raw };
   }
   return null;
 }
@@ -488,26 +521,16 @@ function findStreet(text) {
   const combined = findStreetZipCity(lines);
   if (combined) return combined.street;
 
-  const streetRe = /\b(straße|strasse|str\.?|str|weg|platz|allee|gasse|ring|damm|ufer|promenade|chaussee|berg|hof|plan|markt|zeile|gürtel|kai|brücke|bruecke|steig|pfad)\b/i;
-  const houseNoRe = /\b\d+[a-zA-Z]?\b/;
-
+  // Normal scan
   for (const line of lines) {
-    const l = stripInlineNoise(sanitizeText(line)).trim();
-    if (!l) continue;
-    if (isJunkLine(l)) continue;
-    if (l.length < 6 || l.length > 160) continue;
-    if (streetRe.test(l) && houseNoRe.test(l) && !/(register|ust|gericht|hrb|hra|steuer)/i.test(l)) {
-      return l.replace(/^\s*(adresse|anschrift)\s*[:\-]\s*/i, "").trim();
-    }
+    if (looksStreetLine(line)) return stripInlineNoise(sanitizeText(line)).trim().replace(/^\s*(adresse|anschrift)\s*[:\-]\s*/i, "");
   }
 
+  // Fallback: "Street 12, 01234 City"
   for (const line of lines) {
     const l = stripInlineNoise(sanitizeText(line)).trim();
-    if (!l) continue;
-    if (isJunkLine(l)) continue;
-    if (/,/.test(l) && houseNoRe.test(l) && !/@/.test(l)) {
-      return l.split(",")[0].trim();
-    }
+    if (!l || isJunkLine(l)) continue;
+    if (/,/.test(l) && /\b\d+[a-zA-Z]?\b/.test(l) && !/@/.test(l)) return l.split(",")[0].trim();
   }
 
   return "";
@@ -538,8 +561,8 @@ function isAddressLike(line) {
   const l = stripInlineNoise(sanitizeText(line || "")).trim();
   if (!l) return false;
   if (/\d{5}\s+\S+/.test(l)) return true;
-  if (/(straße|strasse|str\.?|weg|platz|allee|gasse)\b/i.test(l) && /\d/.test(l)) return true;
   if (parseStreetZipCityLine(l)) return true;
+  if (looksStreetLine(l)) return true;
   return false;
 }
 
@@ -612,7 +635,69 @@ function splitIntoBlocks(rawText) {
   return blocks;
 }
 
-/** Returns record + debug fields (raw block, kept lines, matched lines) */
+// Debug helpers
+function escapeHtml(s){
+  return (s ?? "").toString()
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;");
+}
+
+function highlightBlock(rawBlock, used){
+  const lines = (rawBlock || "").split("\n");
+  const usedSet = new Set(Object.values(used || {}).filter(Boolean).map(x => stripInlineNoise(sanitizeText(x)).trim()));
+
+  const outLines = lines.map(l => {
+    const trimmed = l.trim();
+    const sanitized = stripInlineNoise(sanitizeText(trimmed)).trim();
+    if (sanitized && usedSet.has(sanitized)) return `<mark>${escapeHtml(trimmed)}</mark>`;
+    return escapeHtml(trimmed);
+  });
+
+  return outLines.join("\n");
+}
+
+function csvEscape(val) {
+  const s=(val ?? "").toString();
+  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
+  return s;
+}
+function formatZipForCSV(zip, mode) {
+  const z=(zip||"").trim();
+  if (!z) return "";
+  return mode==="excel_text" ? ("'" + z) : z;
+}
+function recordToCsvLine(rec, zipMode){
+  const row = HEADER.map(h => {
+    if (h==="zip") return csvEscape(formatZipForCSV(rec.zip||"", zipMode));
+    return csvEscape(rec[h] || "");
+  });
+  return row.join(",");
+}
+
+// NEW: neighbour-based street extraction around zip/city line
+function inferStreetFromNeighbors(keptLines, zip, city){
+  if (!zip || !city) return { street:"", usedLine:"" };
+  const zipCityRe = new RegExp("\\b" + escapeRegex(zip) + "\\b\\s+" + escapeRegex(city) + "\\b", "i");
+  const idx = keptLines.findIndex(l => zipCityRe.test(stripInlineNoise(sanitizeText(l))));
+  if (idx < 0) return { street:"", usedLine:"" };
+
+  // same line might contain "Street 12, 01234 City"
+  const same = parseStreetZipCityLine(keptLines[idx]);
+  if (same) return { street: same.street, usedLine: keptLines[idx] };
+
+  // check previous 1-2 lines for a street line
+  for (const back of [1,2]) {
+    const j = idx - back;
+    if (j >= 0 && looksStreetLine(keptLines[j])) {
+      return { street: stripInlineNoise(sanitizeText(keptLines[j])).trim(), usedLine: keptLines[j] };
+    }
+  }
+  return { street:"", usedLine:"" };
+}
+
+// Extraction per block with better "used line" picking
 function extractFromBlock(blockText) {
   const rawLines = (blockText || "").split("\n").map(l => l.trim()).filter(Boolean);
   const lines = rawLines.map(l => stripInlineNoise(sanitizeText(l))).filter(Boolean);
@@ -632,6 +717,7 @@ function extractFromBlock(blockText) {
   const emails = findEmails(keptText);
   const phones = findPhones(keptText);
   const websites = findWebsites(keptText).filter(u => !isSocialDomain(u));
+  const uniqueWeb = uniqueDomains(websites);
 
   let street="", zip="", city="";
   let addressLineUsed = "";
@@ -639,25 +725,30 @@ function extractFromBlock(blockText) {
   const combined = findStreetZipCity(keptLines);
   if (combined) {
     street = combined.street; zip = combined.zip; city = combined.city;
-    // find exact line that matched
-    for (const l of keptLines) { if (parseStreetZipCityLine(l)) { addressLineUsed = l; break; } }
+    addressLineUsed = combined._line || "";
   } else {
     const zc = findZipCity(keptText);
     zip = zc.zip; city = zc.city;
-    street = findStreet(keptText);
 
-    // crude: try to find line that contains zip/city and/or street
-    if (zip && city) {
-      const re = new RegExp("\\b" + zip.replace(/[.*+?^${}()|[\]\\]/g,"\\$&") + "\\b\\s+" + city.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"), "i");
-      const hit = keptLines.find(x => re.test(x));
+    // NEW: neighbour street inference
+    const neigh = inferStreetFromNeighbors(keptLines, zip, city);
+    if (neigh.street) {
+      street = neigh.street;
+      addressLineUsed = neigh.usedLine; // prefer street line as "used address line"
+    } else {
+      street = findStreet(keptText);
+      // fallback used line: zip/city line
+      const zipCityRe = new RegExp("\\b" + escapeRegex(zip) + "\\b\\s+" + escapeRegex(city) + "\\b", "i");
+      const hit = keptLines.find(l => zipCityRe.test(stripInlineNoise(sanitizeText(l))));
       if (hit) addressLineUsed = hit;
-    }
-    if (!addressLineUsed && street) {
-      const hit = keptLines.find(x => x.toLowerCase().includes(street.toLowerCase()));
-      if (hit) addressLineUsed = hit;
+      if (!addressLineUsed && street) {
+        const hit2 = keptLines.find(l => stripInlineNoise(sanitizeText(l)).toLowerCase().includes(street.toLowerCase()));
+        if (hit2) addressLineUsed = hit2;
+      }
     }
   }
 
+  // company name
   let company_name = "";
   let nameLineUsed = "";
   for (const line of keptLines) {
@@ -670,12 +761,10 @@ function extractFromBlock(blockText) {
 
   const hasAddress = Boolean((zip && city) || street);
   const contactCount = (phone ? 1 : 0) + (email ? 1 : 0) + (website ? 1 : 0);
-
   const ok =
     (hasAddress && contactCount >= 1) ||
     (company_name && contactCount >= 1) ||
     (company_name && hasAddress);
-
   if (!ok) return null;
 
   const notes = [];
@@ -685,12 +774,23 @@ function extractFromBlock(blockText) {
   if (!email) notes.push("keine Email");
   if (phones.length > 1) notes.push("mehrere Nummern");
   if (emails.length > 1) notes.push("mehrere Emails");
-  if (websites.length > 1) notes.push("mehrere Domains");
+  if (uniqueWeb.length > 1) notes.push("mehrere Domains");
 
-  // find contact lines used (best-effort)
-  const phoneLineUsed = phone ? keptLines.find(l => normalizePhone(l).includes(normalizePhone(phone)) || l.includes(phone)) || "" : "";
-  const emailLineUsed = email ? keptLines.find(l => l.toLowerCase().includes(email)) || "" : "";
-  const websiteLineUsed = website ? keptLines.find(l => getDomain(l).includes(getDomain(website)) || l.toLowerCase().includes(getDomain(website))) || "" : "";
+  // Used lines (better pickers)
+  const phoneLineUsed = phone ? (keptLines.find(l => /tel|telefon|phone|mobil|fax/i.test(l) && normalizePhone(l).includes(normalizePhone(phone))) || keptLines.find(l => normalizePhone(l) === normalizePhone(phone)) || "") : "";
+  const emailLineUsed = email ? (keptLines.find(l => /mail/i.test(l) && l.toLowerCase().includes(email)) || keptLines.find(l => l.toLowerCase().includes(email)) || "") : "";
+
+  // NEW: Website line must actually contain a URL/website marker or yield websites on that line
+  let websiteLineUsed = "";
+  if (website) {
+    const dom = getDomain(website);
+    websiteLineUsed =
+      keptLines.find(l => /\bwebsite\b|web\s*:/i.test(l) && (findWebsites(l).some(u => getDomain(u) === dom))) ||
+      keptLines.find(l => /https?:\/\//i.test(l) && findWebsites(l).some(u => getDomain(u) === dom)) ||
+      keptLines.find(l => /\bwww\./i.test(l) && findWebsites(l).some(u => getDomain(u) === dom)) ||
+      keptLines.find(l => findWebsites(l).some(u => getDomain(u) === dom)) ||
+      "";
+  }
 
   return {
     record: {
@@ -718,10 +818,10 @@ function extractFromBlock(blockText) {
   };
 }
 
+// Dedupe
 function normalizeKeyPart(s) {
   return (s || "").toLowerCase().replace(/[^a-z0-9äöüß]+/gi," ").replace(/\s+/g," ").trim();
 }
-
 function recordKey(rec) {
   const dom = normalizeKeyPart(getDomain(rec.website));
   const phone = normalizeKeyPart(rec.phone);
@@ -733,7 +833,6 @@ function recordKey(rec) {
   if (name) return "n:" + name;
   return "u:" + Math.random().toString(36).slice(2);
 }
-
 function mergeRecords(a, b) {
   const out = { ...a };
   for (const k of HEADER) {
@@ -746,7 +845,6 @@ function mergeRecords(a, b) {
   out.notes = clampNotes(Array.from(notes).join(", "));
   return out;
 }
-
 function dedupe(records) {
   const map = new Map();
   for (const r of records) {
@@ -756,18 +854,12 @@ function dedupe(records) {
   }
   return Array.from(map.values());
 }
-
 function completenessScore(r) {
   let s=0;
   ["company_name","street","zip","city","phone","email","website"].forEach(k=>{ if(r[k]) s++; });
   return s;
 }
 
-/**
- * IMPORTANT: We keep debug info aligned with records (pre-dedupe).
- * Dedupe can merge records; for debug UI we show pre-dedupe rows (so you can inspect exact raw blocks).
- * Export uses deduped records.
- */
 function parseAll(rawText) {
   const blocks = splitIntoBlocks(rawText);
 
@@ -786,30 +878,17 @@ function parseAll(rawText) {
   }
 
   const deduped = dedupe(extracted).sort((a,b)=>completenessScore(b)-completenessScore(a));
-  // For table preview we show debugRows order (pre-dedupe), but you can still export deduped.
   return {
     blocksCount: blocks.length,
     extractedCount: extracted.length,
     dedupedCount: deduped.length,
     skippedCount: skipped,
     recordsDeduped: deduped,
-    debugRows: debugRows
+    debugRows
   };
 }
 
-// CSV
-function csvEscape(val) {
-  const s=(val ?? "").toString();
-  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
-  return s;
-}
-
-function formatZipForCSV(zip, mode) {
-  const z=(zip||"").trim();
-  if (!z) return "";
-  return mode==="excel_text" ? ("'" + z) : z;
-}
-
+// CSV export
 function recordsToCSV(records, zipMode) {
   const lines = [HEADER.join(",")];
   for (const r of records) {
@@ -821,7 +900,6 @@ function recordsToCSV(records, zipMode) {
   }
   return lines.join("\n");
 }
-
 function downloadText(filename, content) {
   const withBom = "\uFEFF" + content;
   const blob = new Blob([withBom], { type: "text/csv;charset=utf-8" });
@@ -834,7 +912,6 @@ function downloadText(filename, content) {
   a.remove();
   setTimeout(()=>URL.revokeObjectURL(url), 1000);
 }
-
 function exportBatches(records, maxRowsPerFile, zipMode) {
   const maxRows = Math.max(1, parseInt(maxRowsPerFile, 10) || 500);
   let fileNo = 1;
@@ -844,7 +921,6 @@ function exportBatches(records, maxRowsPerFile, zipMode) {
     fileNo++;
   }
 }
-
 async function copyToClipboard(text) {
   if (navigator.clipboard && navigator.clipboard.writeText) {
     await navigator.clipboard.writeText(text);
@@ -857,44 +933,6 @@ async function copyToClipboard(text) {
   const ok = document.execCommand("copy");
   ta.remove();
   return ok;
-}
-
-// Debug modal helpers
-function escapeHtml(s){
-  return (s ?? "").toString()
-    .replace(/&/g,"&amp;")
-    .replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;")
-    .replace(/"/g,"&quot;");
-}
-
-function highlightBlock(rawBlock, used){
-  // highlight exact used lines if present (best-effort)
-  const lines = (rawBlock || "").split("\n");
-  const usedSet = new Set(Object.values(used || {}).filter(Boolean));
-
-  const outLines = lines.map(l => {
-    const trimmed = l.trim();
-    // If the line matches one of the used lines (after sanitization), mark it.
-    const sanitized = stripInlineNoise(sanitizeText(trimmed));
-    for (const u of usedSet) {
-      const su = stripInlineNoise(sanitizeText(u));
-      if (su && sanitized && su === sanitized) {
-        return `<mark>${escapeHtml(trimmed)}</mark>`;
-      }
-    }
-    return escapeHtml(trimmed);
-  });
-
-  return outLines.join("\n");
-}
-
-function recordToCsvLine(rec, zipMode){
-  const row = HEADER.map(h => {
-    if (h==="zip") return csvEscape(formatZipForCSV(rec.zip||"", zipMode));
-    return csvEscape(rec[h] || "");
-  });
-  return row.join(",");
 }
 
 // UI
@@ -956,15 +994,12 @@ function renderTable(debugRows){
   for(let i=0;i<previewN;i++){
     const r = debugRows[i].record;
     const tr = document.createElement("tr");
-    tr.dataset.idx = String(i);
-
     const cellsHtml = HEADER.map(h=>{
       let v = r[h] || "";
       if (h==="zip") v = formatZipForCSV(v, zipMode);
       const title = escapeHtml(String(v));
       return `<td title="${title}">${escapeHtml(String(v))}</td>`;
     }).join("");
-
     tr.innerHTML = cellsHtml;
     tr.addEventListener("click", () => openDebug(i));
     tbodyRows.appendChild(tr);
@@ -989,7 +1024,6 @@ function openDebug(idx){
 
   modalSub.textContent = r.company_name ? `– ${r.company_name}` : `– (Name leer)`;
 
-  // Key/values
   const pairs = [
     ["company_name", r.company_name],
     ["street", r.street],
@@ -1013,10 +1047,7 @@ function openDebug(idx){
     <div class="v">${escapeHtml(v || "")}</div>
   `).join("");
 
-  // Block with highlights
-  const html = highlightBlock(item.debug.rawBlock || "", used);
-  blockPre.innerHTML = html;
-
+  blockPre.innerHTML = highlightBlock(item.debug.rawBlock || "", used);
   modalBackdrop.style.display = "block";
 }
 
@@ -1024,15 +1055,10 @@ function closeDebug(){
   modalBackdrop.style.display = "none";
   lastSelectedDebugRow = null;
 }
-
 modalClose.addEventListener("click", closeDebug);
 modalClose2.addEventListener("click", closeDebug);
-modalBackdrop.addEventListener("click", (e) => {
-  if (e.target === modalBackdrop) closeDebug();
-});
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && modalBackdrop.style.display === "block") closeDebug();
-});
+modalBackdrop.addEventListener("click", (e) => { if (e.target === modalBackdrop) closeDebug(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && modalBackdrop.style.display === "block") closeDebug(); });
 
 copyRowBtn.addEventListener("click", async () => {
   if (!lastSelectedDebugRow) return;
@@ -1091,19 +1117,6 @@ zipModeEl.addEventListener("change", ()=>{
   renderTable(lastResult.debugRows);
   updateHint(lastResult);
 });
-
-// CSV function used by copy/export
-function recordsToCSV(records, zipMode) {
-  const lines = [HEADER.join(",")];
-  for (const r of records) {
-    const row = HEADER.map(h => {
-      if (h==="zip") return csvEscape(formatZipForCSV(r.zip||"", zipMode));
-      return csvEscape(r[h] || "");
-    });
-    lines.push(row.join(","));
-  }
-  return lines.join("\n");
-}
 </script>
 </body>
 </html>
